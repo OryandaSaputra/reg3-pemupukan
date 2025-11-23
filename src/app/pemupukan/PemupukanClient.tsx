@@ -42,7 +42,7 @@ async function getRealisasiRange(): Promise<{ start: Date; end: Date }> {
 
 /* ===================[ Build TM/TBM rows dari DB ]=================== */
 
-// ⬆️ di atas buildTmRowsFromDb, tambahkan helper ini sekali saja
+// Helper format tanggal ke YYYY-MM-DD (WIB)
 const fmtYmdJakarta = (d: Date): string =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jakarta",
@@ -62,7 +62,7 @@ type RowInput = {
 /**
  * usePeriodForRealisasi:
  * - true  => realisasi hanya dihitung di antara period.start–period.end
- * - false => realisasi dihitung TOTAL (abaikan tanggal), seperti keinginan default
+ * - false => realisasi dihitung TOTAL (abaikan tanggal)
  */
 async function buildTmRowsFromDb(
   kategori: KategoriTanaman,
@@ -102,9 +102,6 @@ async function buildTmRowsFromDb(
       },
     }),
   ]);
-
-  console.log("DEBUG rencana", kategori, rencana.length, rencana.slice(0, 5));
-  console.log("DEBUG realisasi", kategori, realisasi.length, realisasi.slice(0, 5));
 
   const rencanaRows: RowInput[] = rencana.map((r) => ({
     kebun: r.kebun,
@@ -147,7 +144,6 @@ async function buildTmRowsFromDb(
       return acc + Number(r.kgPupuk || 0);
     }, 0);
   };
-
 
   const rows: TmRow[] = [];
 
@@ -197,11 +193,11 @@ async function buildTmRowsFromDb(
 
     const jumlah_realSd0710 = usePeriodForRealisasi
       ? sumKg(realisasiRows, kebun, 1, periodStartYmd, periodEndYmd) +
-      sumKg(realisasiRows, kebun, 2, periodStartYmd, periodEndYmd) +
-      sumKg(realisasiRows, kebun, 3, periodStartYmd, periodEndYmd)
+        sumKg(realisasiRows, kebun, 2, periodStartYmd, periodEndYmd) +
+        sumKg(realisasiRows, kebun, 3, periodStartYmd, periodEndYmd)
       : sumKg(realisasiRows, kebun, 1) +
-      sumKg(realisasiRows, kebun, 2) +
-      sumKg(realisasiRows, kebun, 3);
+        sumKg(realisasiRows, kebun, 2) +
+        sumKg(realisasiRows, kebun, 3);
 
     const jumlah_pct =
       jumlah_rencana2025 > 0
@@ -241,13 +237,13 @@ async function getTotals() {
     const agg =
       model === "REN"
         ? await prisma.rencanaPemupukan.aggregate({
-          _sum: { kgPupuk: true },
-          where: kategori ? { kategori } : undefined,
-        })
+            _sum: { kgPupuk: true },
+            where: kategori ? { kategori } : undefined,
+          })
         : await prisma.realisasiPemupukan.aggregate({
-          _sum: { kgPupuk: true },
-          where: kategori ? { kategori } : undefined,
-        });
+            _sum: { kgPupuk: true },
+            where: kategori ? { kategori } : undefined,
+          });
 
     return agg._sum.kgPupuk ?? 0;
   };
@@ -295,20 +291,28 @@ async function getAggPupuk() {
   const rows = await prisma.$queryRaw<
     {
       jenis: string;
-      rencana: number;
-      realisasi: number;
+      rencana: number | null;
+      realisasi: number | null;
     }[]
   >`
     SELECT
-      jenisPupuk AS jenis,
-      SUM(CASE WHEN t = 'REN' THEN kgPupuk ELSE 0 END) AS rencana,
-      SUM(CASE WHEN t = 'REAL' THEN kgPupuk ELSE 0 END) AS realisasi
+      jenis,
+      SUM(CASE WHEN t = 'REN'  THEN kg ELSE 0 END) AS rencana,
+      SUM(CASE WHEN t = 'REAL' THEN kg ELSE 0 END) AS realisasi
     FROM (
-      SELECT 'REN' AS t, jenisPupuk, kgPupuk FROM RencanaPemupukan
+      SELECT
+        'REN'::text  AS t,
+        "jenisPupuk" AS jenis,
+        "kgPupuk"    AS kg
+      FROM "RencanaPemupukan"
       UNION ALL
-      SELECT 'REAL' AS t, jenisPupuk, kgPupuk FROM RealisasiPemupukan
+      SELECT
+        'REAL'::text AS t,
+        "jenisPupuk" AS jenis,
+        "kgPupuk"    AS kg
+      FROM "RealisasiPemupukan"
     ) x
-    GROUP BY jenisPupuk
+    GROUP BY jenis
   `;
 
   return rows.map((r) => ({
