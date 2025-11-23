@@ -1,19 +1,22 @@
 // src/app/logout/page.tsx
 "use client";
 
+import React, { Suspense } from "react";
 import { signOut } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LogOut, ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 
-export default function LogoutPage() {
+function LogoutPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // jika ada ?from=/xxx akan dikembalikan ke sana ketika batal
   const from = searchParams.get("from") || "/pemupukan";
 
   const handleLogout = async () => {
-    // Kalau mau benar-benar “bersih”, bisa tambahkan clear localStorage lain di sini
-    // localStorage.removeItem("ptpn5-username");
+    // kalau mau clear localStorage lain, tambahkan di sini
+    // localStorage.removeItem("ptpn4-username");
 
     await signOut({
       callbackUrl: "/login",
@@ -27,81 +30,80 @@ export default function LogoutPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-950 via-emerald-900 to-slate-950 px-4">
-      {/* Pattern halus di background */}
-      <div className="pointer-events-none fixed inset-0 opacity-[0.12] bg-[radial-gradient(circle_at_0_0,white_0,transparent_55%),radial-gradient(circle_at_100%_0,white_0,transparent_55%)]" />
-
       <motion.div
-        className="relative w-full max-w-md"
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: "easeOut" }}
+        className="max-w-md w-full space-y-4 text-emerald-50"
+        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.3 }}
       >
-        {/* Badge kecil di atas kartu */}
+        {/* Header kecil */}
         <motion.div
-          className="mb-3 flex justify-center"
-          initial={{ opacity: 0, y: 10 }}
+          className="flex items-center gap-2 text-xs text-emerald-100/80"
+          initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, duration: 0.3, ease: "easeOut" }}
+          transition={{ delay: 0.1 }}
         >
-          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-900/60 px-3 py-1 text-[11px] tracking-[0.18em] uppercase text-emerald-100 shadow-lg shadow-black/30 backdrop-blur">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            PTPN 4 Regional III • Dashboard Pemupukan
+          <div className="h-6 w-6 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500/50">
+            <LogOut className="h-3.5 w-3.5" />
+          </div>
+          <div className="flex flex-col">
+            <span className="font-medium tracking-wide">Konfirmasi Logout</span>
+            <span className="text-[11px] text-emerald-100/70">
+              Anda akan keluar dari Dashboard Pemupukan Regional III
+            </span>
           </div>
         </motion.div>
 
         {/* Card utama */}
         <motion.div
-          className="relative w-full rounded-3xl bg-white/98 shadow-2xl shadow-black/40 border border-slate-100 px-7 py-8 space-y-5"
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.18, duration: 0.35, ease: "easeOut" }}
+          className="bg-emerald-900/40 rounded-2xl border border-emerald-500/30 shadow-xl shadow-emerald-900/40 p-5 backdrop-blur-md"
+          initial={{ opacity: 0, y: 10, scale: 0.99 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ delay: 0.18 }}
         >
-          {/* Icon + judul */}
           <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 border border-emerald-100 shadow-inner">
-              <LogOut className="h-5 w-5 text-emerald-700" />
+            <div className="mt-0.5">
+              <div className="h-10 w-10 rounded-full bg-rose-500/15 border border-rose-400/60 flex items-center justify-center">
+                <LogOut className="h-5 w-5 text-rose-300" />
+              </div>
             </div>
-            <div className="space-y-1">
-              <h1 className="text-lg sm:text-xl font-semibold text-slate-900">
-                Keluar dari Akun
-              </h1>
-              <p className="text-sm text-slate-600">
-                Anda akan keluar dari sesi Dashboard Pemupukan. Pastikan semua
-                perubahan sudah disimpan sebelum melanjutkan.
-              </p>
-            </div>
-          </div>
 
-          {/* Info / warning */}
-          <div className="rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3 text-xs text-amber-900 space-y-1.5">
-            <p className="font-semibold flex items-center gap-1.5">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
-              Perhatian
-            </p>
-            <p>
-              Setelah logout, Anda perlu memasukkan kembali{" "}
-              <span className="font-medium">username</span> dan{" "}
-              <span className="font-medium">password</span> untuk mengakses
-              kembali dashboard.
-            </p>
+            <div className="flex-1 space-y-1.5">
+              <h1 className="text-base font-semibold tracking-wide text-emerald-50">
+                Yakin ingin logout?
+              </h1>
+              <p className="text-xs leading-snug text-emerald-100/80">
+                Sesi Anda pada sistem pemupukan akan diakhiri. Untuk mengakses kembali dashboard,
+                Anda perlu login ulang menggunakan akun yang sama.
+              </p>
+
+              <div className="mt-3 rounded-lg bg-emerald-950/40 border border-emerald-700/40 px-3 py-2">
+                <p className="text-[11px] text-emerald-100/75 leading-snug">
+                  <span className="font-medium text-emerald-200">Catatan:</span> Pastikan tidak
+                  ada proses input atau impor data yang belum tersimpan sebelum Anda logout.
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Tombol aksi */}
-          <div className="flex flex-col sm:flex-row gap-3 pt-1">
+          <div className="mt-4 flex gap-2">
             <button
+              type="button"
               onClick={handleLogout}
-              className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white text-sm font-medium py-2.5 shadow-md shadow-emerald-800/50 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium rounded-xl px-3 py-2.5 bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-900/40 border border-rose-300/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 transition-colors"
             >
               <LogOut className="h-4 w-4" />
-              Keluar sekarang
+              <span>Ya, logout sekarang</span>
             </button>
+
             <button
               type="button"
               onClick={handleCancel}
-              className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-white text-slate-700 text-sm font-medium py-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium rounded-xl px-3 py-2.5 border border-emerald-400/50 text-emerald-100 bg-emerald-900/40 hover:bg-emerald-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
-              Batal & kembali
+              <span>Batal & kembali</span>
             </button>
           </div>
         </motion.div>
@@ -117,5 +119,27 @@ export default function LogoutPage() {
         </motion.p>
       </motion.div>
     </div>
+  );
+}
+
+export default function LogoutPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-950 via-emerald-900 to-slate-950 px-4">
+          <div className="flex flex-col items-center text-emerald-100/90 text-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <LogOut className="h-4 w-4 animate-pulse" />
+              <span>Sedang menyiapkan halaman logout...</span>
+            </div>
+            <p className="text-[11px] text-emerald-200/70">
+              Mohon tunggu sebentar...
+            </p>
+          </div>
+        </div>
+      }
+    >
+      <LogoutPageContent />
+    </Suspense>
   );
 }
