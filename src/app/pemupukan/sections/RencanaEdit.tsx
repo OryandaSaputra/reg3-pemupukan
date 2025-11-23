@@ -1,6 +1,11 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import SectionHeader from "../components/SectionHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -111,7 +116,9 @@ function normalizeKategori(k: string | null | undefined): Kategori {
   return "";
 }
 
-export default function RencanaEdit() {
+/* ===================[ KOMPONEN CONTENT ]=================== */
+
+function RencanaEditContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const idParam = searchParams.get("id");
@@ -694,5 +701,29 @@ export default function RencanaEdit() {
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+/* ===================[ WRAPPER DENGAN SUSPENSE ]=================== */
+
+export default function RencanaEditPage() {
+  return (
+    <Suspense
+      fallback={
+        <section className="space-y-2">
+          <SectionHeader
+            title="Edit Rencana Pemupukan"
+            desc="Menyiapkan halaman edit rencana…"
+          />
+          <Card className="bg-white/80 dark:bg-slate-900/60">
+            <CardContent className="py-10 flex items-center justify-center text-sm text-slate-600 dark:text-slate-300">
+              Memuat parameter dan data awal…
+            </CardContent>
+          </Card>
+        </section>
+      }
+    >
+      <RencanaEditContent />
+    </Suspense>
   );
 }
