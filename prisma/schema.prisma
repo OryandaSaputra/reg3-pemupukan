@@ -1,0 +1,59 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum KategoriTanaman {
+  TM
+  TBM
+  BIBITAN
+}
+
+model RencanaPemupukan {
+  id              Int              @id @default(autoincrement())
+  kategori        KategoriTanaman
+  kebun           String
+  kodeKebun       String
+  tanggal         DateTime?        @db.Date   // boleh null
+  afd             String
+  tt              String
+  blok            String
+  luasHa          Float
+  inv             Int
+  jenisPupuk      String
+  aplikasiKe      Int
+  dosisKgPerPokok Float
+  kgPupuk         Float
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([kebun, tanggal], name: "idx_rencana_kebun_tanggal")
+}
+
+model RealisasiPemupukan {
+  id              Int              @id @default(autoincrement())
+  kategori        KategoriTanaman
+  kebun           String
+  kodeKebun       String
+  tanggal         DateTime?        @db.Date   // boleh null
+  afd             String
+  tt              String
+  blok            String
+  luasHa          Float
+  inv             Int
+  jenisPupuk      String
+  aplikasiKe      Int
+  dosisKgPerPokok Float
+  kgPupuk         Float
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([kebun, tanggal], name: "idx_realisasi_kebun_tanggal")
+}
