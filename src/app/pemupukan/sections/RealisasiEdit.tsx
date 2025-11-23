@@ -1,6 +1,11 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import SectionHeader from "../components/SectionHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,7 +83,7 @@ function toNumberLoose(
 ): number {
   if (v === null || v === undefined || v === "") return 0;
   if (v instanceof Date) return 0;
-  const n = Number(String(v).replace(",", "."));
+  const n = Number(String(v).replace(",", ".")); // dukung koma
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -103,7 +108,7 @@ function toLocalYmd(value: string | null): string {
 
 // ================== KOMPONEN UTAMA EDIT ===================
 
-export default function RealisasiEdit() {
+function RealisasiEditContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const idParam = searchParams.get("id");
@@ -157,7 +162,7 @@ export default function RealisasiEdit() {
     try {
       setLoading(true);
 
-      // Gunakan GET tanpa query param → backend akan kembalikan semua data (mode lama)
+      // Gunakan GET tanpa query param → backend akan kembalikan semua data
       const res = await fetch("/api/pemupukan/realisasi", {
         cache: "no-store",
       });
@@ -683,5 +688,29 @@ export default function RealisasiEdit() {
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+// ================== WRAPPER DENGAN SUSPENSE ===================
+
+export default function RealisasiEditPage() {
+  return (
+    <Suspense
+      fallback={
+        <section className="space-y-2">
+          <SectionHeader
+            title="Realisasi Pemupukan - Edit Data"
+            desc="Menyiapkan halaman edit realisasi…"
+          />
+          <Card className="bg-white/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800">
+            <CardContent className="py-10 flex items-center justify-center text-sm text-slate-600 dark:text-slate-300">
+              Memuat parameter dan data awal…
+            </CardContent>
+          </Card>
+        </section>
+      }
+    >
+      <RealisasiEditContent />
+    </Suspense>
   );
 }
