@@ -69,6 +69,33 @@ export type TmRow = {
 };
 
 /* ======================================================================= */
+/* ======================= KONSTAN URUTAN KEBUN ========================= */
+/* ======================================================================= */
+
+const KEBUN_ORDER = [
+  "SGH",
+  "SGO",
+  "SPA",
+  "TME",
+  "TPU",
+  "LDA",
+  "SBT",
+  "AMO1",
+  "AMO2",
+  "TAN",
+  "TER",
+  "SKE",
+  "SLI",
+  "TAM",
+  "SBL",
+  "SRO",
+  "SIN",
+  "SSI",
+  "STA",
+  "SBE",
+];
+
+/* ======================================================================= */
 /* ====================== Helper tanggal Jakarta ========================= */
 /* ======================================================================= */
 
@@ -171,6 +198,47 @@ function computeTotals(rows?: TmRow[] | null) {
 }
 
 type Totals = ReturnType<typeof computeTotals> | null;
+
+/* ======================================================================= */
+/* ========================= ENSURE ALL KEBUN =========================== */
+/* ======================================================================= */
+
+function ensureAllKebun(rows: TmRow[], kebunList = KEBUN_ORDER): TmRow[] {
+  const map = new Map<string, TmRow>();
+  rows.forEach((r) => map.set(r.kebun, r));
+
+  return kebunList.map((kebun, idx) => {
+    const existing = map.get(kebun);
+    if (existing) {
+      return {
+        ...existing,
+        kebun,
+        // nomor SELALU sesuai urutan tetap, abaikan no dari DB
+        no: idx + 1,
+      };
+    }
+
+    return {
+      no: idx + 1,
+      kebun,
+      app1_rencana: 0,
+      app1_real: 0,
+      app1_pct: 0,
+      app2_rencana: 0,
+      app2_real: 0,
+      app2_pct: 0,
+      app3_rencana: 0,
+      app3_real: 0,
+      app3_pct: 0,
+      renc_sekarang: 0,
+      real_sekarang: 0,
+      renc_besok: 0,
+      jumlah_rencana2025: 0,
+      jumlah_realSd0710: 0,
+      jumlah_pct: 0,
+    };
+  });
+}
 
 /* ======================================================================= */
 /* ============================ Pct styling ============================== */
@@ -464,14 +532,37 @@ export default function Visualisasi({
   const tomorrowShort = isoToShort(tomorrowISO);
 
   /* =================================================================== */
+  /* =================== DISPLAY ROWS (PASTI 20 KEBUN) ================= */
+  /* =================================================================== */
+
+  const tmDisplayRows = useMemo(
+    () => ensureAllKebun(tmRows),
+    [tmRows]
+  );
+  const tbmDisplayRows = useMemo(
+    () => ensureAllKebun(tbmRows),
+    [tbmRows]
+  );
+  const tmTbmDisplayRows = useMemo(
+    () => ensureAllKebun(tmTbmRows),
+    [tmTbmRows]
+  );
+
+  /* =================================================================== */
   /* ======================== COMPUTE TOTALS =========================== */
   /* =================================================================== */
 
-  const totalsTM = useMemo(() => computeTotals(tmRows), [tmRows]);
-  const totalsTBM = useMemo(() => computeTotals(tbmRows), [tbmRows]);
+  const totalsTM = useMemo(
+    () => computeTotals(tmDisplayRows),
+    [tmDisplayRows]
+  );
+  const totalsTBM = useMemo(
+    () => computeTotals(tbmDisplayRows),
+    [tbmDisplayRows]
+  );
   const totalsTmTbm = useMemo(
-    () => computeTotals(tmTbmRows),
-    [tmTbmRows]
+    () => computeTotals(tmTbmDisplayRows),
+    [tmTbmDisplayRows]
   );
 
   /* =================================================================== */
@@ -577,7 +668,7 @@ export default function Visualisasi({
             <button
               type="button"
               onClick={() =>
-                exportPemupukanTablePdf("TM", tmRows, totalsTM, {
+                exportPemupukanTablePdf("TM", tmDisplayRows, totalsTM, {
                   todayShort,
                   tomorrowShort,
                   startLong,
@@ -702,104 +793,93 @@ export default function Visualisasi({
               </thead>
 
               <tbody>
-                {tmRows.length === 0 ? (
-                  <tr>
+                {tmDisplayRows.map((r, idx) => (
+                  <tr
+                    key={`tm-${r.kebun}-${idx}`}
+                    className={idx % 2 ? "bg-white" : "bg-slate-50"}
+                  >
+                    <td className="border px-2 py-1 text-center">
+                      {idx + 1}
+                    </td>
+
+                    <td className="border px-2 py-1 text-left">{r.kebun}</td>
+
+                    {/* APLIKASI I */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app1_rencana)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app1_real)}
+                    </td>
                     <td
-                      colSpan={17}
-                      className="px-3 py-6 text-center text-slate-500"
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.app1_pct
+                      )}`}
                     >
-                      Tidak ada data TM untuk filter/periode ini.
+                      {fmtPct(r.app1_pct)}
+                    </td>
+
+                    {/* APLIKASI II */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app2_rencana)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app2_real)}
+                    </td>
+                    <td
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.app2_pct
+                      )}`}
+                    >
+                      {fmtPct(r.app2_pct)}
+                    </td>
+
+                    {/* APLIKASI III */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app3_rencana)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app3_real)}
+                    </td>
+                    <td
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.app3_pct
+                      )}`}
+                    >
+                      {fmtPct(r.app3_pct)}
+                    </td>
+
+                    {/* Harian */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.renc_sekarang)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.real_sekarang)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.renc_besok)}
+                    </td>
+
+                    {/* TOTAL */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.jumlah_rencana2025)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.jumlah_realSd0710)}
+                    </td>
+                    <td
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.jumlah_pct
+                      )}`}
+                    >
+                      {fmtPct(r.jumlah_pct)}
                     </td>
                   </tr>
-                ) : (
-                  tmRows.map((r, idx) => (
-                    <tr
-                      key={`tm-${r.kebun}-${idx}`}
-                      className={idx % 2 ? "bg-white" : "bg-slate-50"}
-                    >
-                      <td className="border px-2 py-1 text-center">
-                        {r.no ?? idx + 1}
-                      </td>
-
-                      <td className="border px-2 py-1 text-left">{r.kebun}</td>
-
-                      {/* APLIKASI I */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app1_rencana)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app1_real)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.app1_pct
-                        )}`}
-                      >
-                        {fmtPct(r.app1_pct)}
-                      </td>
-
-                      {/* APLIKASI II */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app2_rencana)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app2_real)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.app2_pct
-                        )}`}
-                      >
-                        {fmtPct(r.app2_pct)}
-                      </td>
-
-                      {/* APLIKASI III */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app3_rencana)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app3_real)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.app3_pct
-                        )}`}
-                      >
-                        {fmtPct(r.app3_pct)}
-                      </td>
-
-                      {/* Harian */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.renc_sekarang)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.real_sekarang)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.renc_besok)}
-                      </td>
-
-                      {/* TOTAL */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.jumlah_rencana2025)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.jumlah_realSd0710)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.jumlah_pct
-                        )}`}
-                      >
-                        {fmtPct(r.jumlah_pct)}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
 
               {/* ======================== FOOTER TOTAL TM ======================== */}
-              {totalsTM && tmRows.length > 0 && (
+              {totalsTM && tmDisplayRows.length > 0 && (
                 <tfoot>
                   <tr className="bg-slate-200 font-semibold">
                     <td
@@ -898,7 +978,7 @@ export default function Visualisasi({
             <button
               type="button"
               onClick={() =>
-                exportPemupukanTablePdf("TBM", tbmRows, totalsTBM, {
+                exportPemupukanTablePdf("TBM", tbmDisplayRows, totalsTBM, {
                   todayShort,
                   tomorrowShort,
                   startLong,
@@ -1023,104 +1103,93 @@ export default function Visualisasi({
               </thead>
 
               <tbody>
-                {tbmRows.length === 0 ? (
-                  <tr>
+                {tbmDisplayRows.map((r, idx) => (
+                  <tr
+                    key={`tbm-${r.kebun}-${idx}`}
+                    className={idx % 2 ? "bg-white" : "bg-slate-50"}
+                  >
+                    <td className="border px-2 py-1 text-center">
+                      {idx + 1}
+                    </td>
+
+                    <td className="border px-2 py-1 text-left">{r.kebun}</td>
+
+                    {/* APLIKASI I */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app1_rencana)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app1_real)}
+                    </td>
                     <td
-                      colSpan={17}
-                      className="px-3 py-6 text-center text-slate-500"
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.app1_pct
+                      )}`}
                     >
-                      Tidak ada data TBM untuk filter/periode ini.
+                      {fmtPct(r.app1_pct)}
+                    </td>
+
+                    {/* APLIKASI II */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app2_rencana)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app2_real)}
+                    </td>
+                    <td
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.app2_pct
+                      )}`}
+                    >
+                      {fmtPct(r.app2_pct)}
+                    </td>
+
+                    {/* APLIKASI III */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app3_rencana)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app3_real)}
+                    </td>
+                    <td
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.app3_pct
+                      )}`}
+                    >
+                      {fmtPct(r.app3_pct)}
+                    </td>
+
+                    {/* Harian */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.renc_sekarang)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.real_sekarang)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.renc_besok)}
+                    </td>
+
+                    {/* TOTAL */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.jumlah_rencana2025)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.jumlah_realSd0710)}
+                    </td>
+                    <td
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.jumlah_pct
+                      )}`}
+                    >
+                      {fmtPct(r.jumlah_pct)}
                     </td>
                   </tr>
-                ) : (
-                  tbmRows.map((r, idx) => (
-                    <tr
-                      key={`tbm-${r.kebun}-${idx}`}
-                      className={idx % 2 ? "bg-white" : "bg-slate-50"}
-                    >
-                      <td className="border px-2 py-1 text-center">
-                        {r.no ?? idx + 1}
-                      </td>
-
-                      <td className="border px-2 py-1 text-left">{r.kebun}</td>
-
-                      {/* APLIKASI I */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app1_rencana)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app1_real)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.app1_pct
-                        )}`}
-                      >
-                        {fmtPct(r.app1_pct)}
-                      </td>
-
-                      {/* APLIKASI II */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app2_rencana)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app2_real)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.app2_pct
-                        )}`}
-                      >
-                        {fmtPct(r.app2_pct)}
-                      </td>
-
-                      {/* APLIKASI III */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app3_rencana)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app3_real)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.app3_pct
-                        )}`}
-                      >
-                        {fmtPct(r.app3_pct)}
-                      </td>
-
-                      {/* Harian */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.renc_sekarang)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.real_sekarang)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.renc_besok)}
-                      </td>
-
-                      {/* TOTAL */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.jumlah_rencana2025)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.jumlah_realSd0710)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.jumlah_pct
-                        )}`}
-                      >
-                        {fmtPct(r.jumlah_pct)}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
 
               {/* ======================== FOOTER TOTAL TBM ======================== */}
-              {totalsTBM && tbmRows.length > 0 && (
+              {totalsTBM && tbmDisplayRows.length > 0 && (
                 <tfoot>
                   <tr className="bg-slate-200 font-semibold">
                     <td
@@ -1219,14 +1288,19 @@ export default function Visualisasi({
             <button
               type="button"
               onClick={() =>
-                exportPemupukanTablePdf("TM & TBM", tmTbmRows, totalsTmTbm, {
-                  todayShort,
-                  tomorrowShort,
-                  startLong,
-                  endLong,
-                  filename: "Tabel_TM_TBM.pdf",
-                  hasUserFilter,
-                })
+                exportPemupukanTablePdf(
+                  "TM & TBM",
+                  tmTbmDisplayRows,
+                  totalsTmTbm,
+                  {
+                    todayShort,
+                    tomorrowShort,
+                    startLong,
+                    endLong,
+                    filename: "Tabel_TM_TBM.pdf",
+                    hasUserFilter,
+                  }
+                )
               }
               className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
             >
@@ -1344,104 +1418,93 @@ export default function Visualisasi({
               </thead>
 
               <tbody>
-                {tmTbmRows.length === 0 ? (
-                  <tr>
+                {tmTbmDisplayRows.map((r, idx) => (
+                  <tr
+                    key={`tmTbm-${r.kebun}-${idx}`}
+                    className={idx % 2 ? "bg-white" : "bg-slate-50"}
+                  >
+                    <td className="border px-2 py-1 text-center">
+                      {idx + 1}
+                    </td>
+
+                    <td className="border px-2 py-1 text-left">{r.kebun}</td>
+
+                    {/* APLIKASI I */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app1_rencana)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app1_real)}
+                    </td>
                     <td
-                      colSpan={17}
-                      className="px-3 py-6 text-center text-slate-500"
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.app1_pct
+                      )}`}
                     >
-                      Tidak ada data TM &amp; TBM untuk filter/periode ini.
+                      {fmtPct(r.app1_pct)}
+                    </td>
+
+                    {/* APLIKASI II */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app2_rencana)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app2_real)}
+                    </td>
+                    <td
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.app2_pct
+                      )}`}
+                    >
+                      {fmtPct(r.app2_pct)}
+                    </td>
+
+                    {/* APLIKASI III */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app3_rencana)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.app3_real)}
+                    </td>
+                    <td
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.app3_pct
+                      )}`}
+                    >
+                      {fmtPct(r.app3_pct)}
+                    </td>
+
+                    {/* Harian */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.renc_sekarang)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.real_sekarang)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.renc_besok)}
+                    </td>
+
+                    {/* Total */}
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.jumlah_rencana2025)}
+                    </td>
+                    <td className="border px-2 py-1 text-right">
+                      {fmtNum(r.jumlah_realSd0710)}
+                    </td>
+                    <td
+                      className={`border px-2 py-1 text-right ${pctClass(
+                        r.jumlah_pct
+                      )}`}
+                    >
+                      {fmtPct(r.jumlah_pct)}
                     </td>
                   </tr>
-                ) : (
-                  tmTbmRows.map((r, idx) => (
-                    <tr
-                      key={`tmTbm-${r.kebun}-${idx}`}
-                      className={idx % 2 ? "bg-white" : "bg-slate-50"}
-                    >
-                      <td className="border px-2 py-1 text-center">
-                        {r.no ?? idx + 1}
-                      </td>
-
-                      <td className="border px-2 py-1 text-left">{r.kebun}</td>
-
-                      {/* APLIKASI I */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app1_rencana)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app1_real)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.app1_pct
-                        )}`}
-                      >
-                        {fmtPct(r.app1_pct)}
-                      </td>
-
-                      {/* APLIKASI II */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app2_rencana)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app2_real)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.app2_pct
-                        )}`}
-                      >
-                        {fmtPct(r.app2_pct)}
-                      </td>
-
-                      {/* APLIKASI III */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app3_rencana)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.app3_real)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.app3_pct
-                        )}`}
-                      >
-                        {fmtPct(r.app3_pct)}
-                      </td>
-
-                      {/* Harian */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.renc_sekarang)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.real_sekarang)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.renc_besok)}
-                      </td>
-
-                      {/* Total */}
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.jumlah_rencana2025)}
-                      </td>
-                      <td className="border px-2 py-1 text-right">
-                        {fmtNum(r.jumlah_realSd0710)}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-right ${pctClass(
-                          r.jumlah_pct
-                        )}`}
-                      >
-                        {fmtPct(r.jumlah_pct)}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
 
               {/* ======================== FOOTER TOTAL TM & TBM ======================== */}
-              {totalsTmTbm && tmTbmRows.length > 0 && (
+              {totalsTmTbm && tmTbmDisplayRows.length > 0 && (
                 <tfoot>
                   <tr className="bg-slate-200 font-semibold">
                     <td
