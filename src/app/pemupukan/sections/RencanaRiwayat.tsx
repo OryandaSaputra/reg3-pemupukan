@@ -72,6 +72,8 @@ const TABLE_HEADERS = [
   "Kg Pupuk",
 ] as const;
 
+const PAGE_SIZE = 500;
+
 function parseDateValue(s: string): number {
   if (!s || s === "-") return 0;
   const t = new Date(s).getTime();
@@ -146,6 +148,7 @@ export default function RencanaRiwayat() {
 
   // kebun yang dipilih (filter + hapus & export per kebun)
   const [selectedKebun, setSelectedKebun] = useState("");
+  const [page, setPage] = useState(1);
 
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
 
@@ -176,6 +179,11 @@ export default function RencanaRiwayat() {
       active = false;
     };
   }, []);
+
+  // reset halaman ketika filter/search berubah
+  useEffect(() => {
+    setPage(1);
+  }, [q, selectedKebun]);
 
   // daftar kebun unik dari SELURUH data
   const kebunList = useMemo(() => {
@@ -217,9 +225,23 @@ export default function RencanaRiwayat() {
     );
   }, [rows, q, selectedKebun]);
 
-  // virtualizer
+  // ====== PAGINATION (per 500 data) ======
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)),
+    [filtered.length]
+  );
+
+  const currentPage = Math.min(page, totalPages);
+  const pageStartIndex = (currentPage - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(pageStartIndex, pageStartIndex + PAGE_SIZE);
+
+  const showingFrom = filtered.length === 0 ? 0 : pageStartIndex + 1;
+  const showingTo =
+    filtered.length === 0 ? 0 : pageStartIndex + pageRows.length;
+
+  // virtualizer – hanya untuk baris di halaman saat ini
   const rowVirtualizer = useVirtualizer({
-    count: filtered.length,
+    count: pageRows.length,
     getScrollElement: () => scrollParentRef.current,
     estimateSize: () => 32,
     overscan: 10,
@@ -837,7 +859,7 @@ export default function RencanaRiwayat() {
             </div>
           </div>
 
-          {/* Tabel + virtual scroll */}
+          {/* Tabel + virtual scroll (per halaman) */}
           <div
             ref={scrollParentRef}
             className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-md max-h-[520px]"
@@ -869,7 +891,7 @@ export default function RencanaRiwayat() {
                 )}
 
                 {virtualItems.map((virtualRow) => {
-                  const r = filtered[virtualRow.index];
+                  const r = pageRows[virtualRow.index];
                   if (!r) return null;
 
                   return (
@@ -930,7 +952,7 @@ export default function RencanaRiwayat() {
                   </tr>
                 )}
 
-                {!loading && total === 0 && (
+                {!loading && filtered.length === 0 && (
                   <tr>
                     <td
                       colSpan={14}
@@ -955,14 +977,47 @@ export default function RencanaRiwayat() {
             </table>
           </div>
 
-          {/* Info ringkas (tanpa pagination halaman) */}
+          {/* Info ringkas + pagination */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-600 dark:text-slate-300">
             <span>
-              Menampilkan {filtered.length} data dari total {total} data
-              {selectedKebun && (
-                <> &nbsp; (filter kebun: {selectedKebun})</>
+              {filtered.length === 0 ? (
+                <>Menampilkan 0 data dari total {total} data</>
+              ) : (
+                <>
+                  Menampilkan {showingFrom}–{showingTo} dari{" "}
+                  {filtered.length} data tersaring (dari total {total} data
+                  {selectedKebun && (
+                    <> &nbsp; | filter kebun: {selectedKebun}</>
+                  )}
+                  )
+                </>
               )}
             </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1 || filtered.length === 0}
+                className="px-2 py-1 rounded border border-slate-300 text-[11px] disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Sebelumnya
+              </button>
+              <span className="text-[11px]">
+                Halaman {filtered.length === 0 ? 0 : currentPage} dari{" "}
+                {filtered.length === 0 ? 0 : totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={
+                  currentPage === totalPages || filtered.length === 0
+                }
+                className="px-2 py-1 rounded border border-slate-300 text-[11px] disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Berikutnya
+              </button>
+            </div>
           </div>
         </CardContent>
       </Card>
