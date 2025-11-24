@@ -24,7 +24,7 @@ type ApiRencana = {
   kategori: Kategori;
   kebun: string;
   kodeKebun: string;
-  tanggal: string | null; // bisa null
+  tanggal: string | null;
   afd: string;
   tt: string;
   blok: string;
@@ -104,7 +104,7 @@ function makeSheetName(raw: string): string {
   return name;
 }
 
-// helper: mapping ApiRencana -> HistoryRow
+// mapping ApiRencana -> HistoryRow
 function mapApiToHistoryRow(r: ApiRencana): HistoryRow {
   return {
     id: r.id,
@@ -124,15 +124,14 @@ function mapApiToHistoryRow(r: ApiRencana): HistoryRow {
   };
 }
 
-// helper: fetch semua data (tanpa pagination) khusus untuk export
+// helper: fetch semua data (tanpa pagination) – dipakai untuk RIWAYAT & EXPORT
 async function fetchAllRencanaForExport(): Promise<HistoryRow[]> {
   const res = await fetch("/api/pemupukan/rencana", { cache: "no-store" });
   if (!res.ok) {
-    throw new Error("Gagal mengambil semua data rencana untuk export");
+    throw new Error("Gagal mengambil semua data rencana");
   }
 
   const json = await res.json();
-
   const dataArray: ApiRencana[] = Array.isArray(json) ? json : json.data;
   return dataArray.map(mapApiToHistoryRow);
 }
@@ -141,55 +140,27 @@ export default function RencanaRiwayat() {
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
-  const pageSize = 200;
   const [total, setTotal] = useState(0);
 
   const router = useRouter();
 
-  // kebun yang dipilih (dipakai untuk filter + hapus & export per kebun)
+  // kebun yang dipilih (filter + hapus & export per kebun)
   const [selectedKebun, setSelectedKebun] = useState("");
 
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
 
-  // ======== FETCH DATA DENGAN PAGINATION API ========
+  // ========= LOAD SEMUA DATA SEKALI =========
   useEffect(() => {
     let active = true;
+
     (async () => {
       try {
         setLoading(true);
-
-        const params = new URLSearchParams();
-        params.set("page", String(page));
-        params.set("pageSize", String(pageSize));
-        if (selectedKebun) {
-          // filter kebun di API
-          params.set("kebun", selectedKebun);
-        }
-
-        const res = await fetch(
-          `/api/pemupukan/rencana?${params.toString()}`,
-          {
-            cache: "no-store",
-          }
-        );
-
-        if (!res.ok) {
-          throw new Error("Gagal mengambil data rencana");
-        }
-
-        const json = await res.json();
-
-        const dataArray: ApiRencana[] = Array.isArray(json)
-          ? json
-          : json.data;
-        const meta = Array.isArray(json) ? undefined : json.meta;
-
+        const allRows = await fetchAllRencanaForExport();
         if (!active) return;
 
-        const mapped = dataArray.map(mapApiToHistoryRow);
-        setRows(mapped);
-        setTotal(meta?.total ?? mapped.length);
+        setRows(allRows);
+        setTotal(allRows.length);
       } catch (err) {
         console.error(err);
         if (active) {
@@ -204,14 +175,9 @@ export default function RencanaRiwayat() {
     return () => {
       active = false;
     };
-  }, [page, pageSize, selectedKebun]);
+  }, []);
 
-  // reset halaman ke 1 jika kebun filter berubah
-  useEffect(() => {
-    setPage(1);
-  }, [selectedKebun]);
-
-  // daftar kebun unik (hanya dari data yang sedang ditampilkan; untuk versi full butuh endpoint khusus)
+  // daftar kebun unik dari SELURUH data
   const kebunList = useMemo(() => {
     const set = new Set<string>();
     rows.forEach((r) => {
@@ -220,36 +186,38 @@ export default function RencanaRiwayat() {
     return Array.from(set).sort();
   }, [rows]);
 
-  // filter teks (hanya di dalam halaman saat ini) + sort tanggal desc
+  // filter kebun + teks + sort tanggal desc
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
-    const base = term
-      ? rows.filter((r) => {
-          const keb = KEBUN_LABEL[r.kebun] ?? r.kebun ?? "";
-          return [
-            r.kategori,
-            keb,
-            r.kodeKebun ?? "",
-            r.afd ?? "",
-            r.blok ?? "",
-            r.jenisPupuk ?? "",
-            r.tanggal ?? "",
-          ]
-            .map((v) => String(v).toLowerCase())
-            .some((v) => v.includes(term));
-        })
-      : rows;
+    let base = rows;
+
+    if (selectedKebun) {
+      base = base.filter((r) => r.kebun === selectedKebun);
+    }
+
+    if (term) {
+      base = base.filter((r) => {
+        const keb = KEBUN_LABEL[r.kebun] ?? r.kebun ?? "";
+        return [
+          r.kategori,
+          keb,
+          r.kodeKebun ?? "",
+          r.afd ?? "",
+          r.blok ?? "",
+          r.jenisPupuk ?? "",
+          r.tanggal ?? "",
+        ]
+          .map((v) => String(v).toLowerCase())
+          .some((v) => v.includes(term));
+      });
+    }
 
     return [...base].sort(
       (a, b) => parseDateValue(b.tanggal) - parseDateValue(a.tanggal)
     );
-  }, [rows, q]);
+  }, [rows, q, selectedKebun]);
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const startIdx = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const endIdx = Math.min(page * pageSize, total);
-
-  // virtualizer untuk baris tabel di HALAMAN AKTIF
+  // virtualizer
   const rowVirtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => scrollParentRef.current,
@@ -306,7 +274,6 @@ export default function RencanaRiwayat() {
         return;
       }
 
-      // refresh halaman sekarang: cukup buang dari state lokal
       setRows((prev) => prev.filter((r) => r.id !== row.id));
       setTotal((prev) => (prev > 0 ? prev - 1 : 0));
 
@@ -368,7 +335,6 @@ export default function RencanaRiwayat() {
       }
 
       setRows([]);
-      setPage(1);
       setQ("");
       setSelectedKebun("");
       setTotal(0);
@@ -425,9 +391,7 @@ export default function RencanaRiwayat() {
     try {
       const res = await fetch(
         `/api/pemupukan/rencana?kebun=${encodeURIComponent(selectedKebun)}`,
-        {
-          method: "DELETE",
-        }
+        { method: "DELETE" }
       );
 
       if (!res.ok) {
@@ -444,15 +408,18 @@ export default function RencanaRiwayat() {
         return;
       }
 
-      // buang dari halaman saat ini
+      const json = await res.json().catch(() => null);
+      const deletedCount = json?.deletedCount ?? 0;
+
       setRows((prev) => prev.filter((r) => r.kebun !== selectedKebun));
-      // total dikurangi kira-kira (tidak presisi, tapi lebih baik daripada tidak)
-      // idealnya baca deletedCount dari response JSON, tapi route saat ini belum kirim
+      setTotal((prev) =>
+        deletedCount > 0 ? Math.max(0, prev - deletedCount) : prev
+      );
       setSelectedKebun("");
 
       await Swal.fire({
         title: "Berhasil",
-        text: `Semua data rencana untuk kebun ${label} berhasil dihapus.`,
+        html: `Semua data rencana untuk kebun <b>${label}</b> berhasil dihapus.<br/>Baris terhapus: <b>${deletedCount}</b>.`,
         icon: "success",
         confirmButtonText: "OK",
       });
@@ -473,7 +440,8 @@ export default function RencanaRiwayat() {
     router.push(`/pemupukan/rencana/edit?id=${row.id}`);
   };
 
-  // === EXPORT: Excel (Semua Kebun, multi-sheet) ===
+  // ===== EXPORT: Excel & PDF (pakai fetchAllRencanaForExport) =====
+
   const handleExportExcelAll = async () => {
     try {
       const allRows = await fetchAllRencanaForExport();
@@ -538,7 +506,6 @@ export default function RencanaRiwayat() {
     }
   };
 
-  // === EXPORT: Excel (Per Kebun) ===
   const handleExportExcelByKebun = async () => {
     if (!selectedKebun) {
       await Swal.fire({
@@ -605,7 +572,6 @@ export default function RencanaRiwayat() {
     }
   };
 
-  // === EXPORT: PDF (Semua Kebun, per kebun 1 halaman) ===
   const handleExportPdfAll = async () => {
     try {
       const allRows = await fetchAllRencanaForExport();
@@ -635,9 +601,7 @@ export default function RencanaRiwayat() {
       );
 
       kebunEntries.forEach(([kebunCode, kebunRows], idx) => {
-        if (idx > 0) {
-          doc.addPage("landscape");
-        }
+        if (idx > 0) doc.addPage("landscape");
 
         const kebunLabel = KEBUN_LABEL[kebunCode] ?? kebunCode;
         doc.setFontSize(10);
@@ -685,7 +649,6 @@ export default function RencanaRiwayat() {
     }
   };
 
-  // === EXPORT: PDF (Per Kebun) ===
   const handleExportPdfByKebun = async () => {
     if (!selectedKebun) {
       await Swal.fire({
@@ -716,7 +679,6 @@ export default function RencanaRiwayat() {
       const doc = new jsPDFmod.jsPDF({ orientation: "landscape" });
 
       const kebunLabel = KEBUN_LABEL[selectedKebun] ?? selectedKebun;
-
       doc.setFontSize(10);
       doc.text(
         `Rencana Pemupukan - Kebun ${kebunLabel} (${selectedKebun})`,
@@ -774,7 +736,7 @@ export default function RencanaRiwayat() {
         <CardHeader className="pb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle className="text-[13px]">
-              Pencarian, Aksi, & Export
+              Pencarian, Aksi, &amp; Export
             </CardTitle>
             <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
               Filter data, hapus, atau export riwayat rencana ke Excel/PDF.
@@ -841,7 +803,7 @@ export default function RencanaRiwayat() {
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Cari kategori (TM/TBM/BIBITAN) / kebun / AFD / blok / jenis pupuk / tanggal… (hanya dalam halaman ini)"
+                placeholder="Cari kategori (TM/TBM/BIBITAN) / kebun / AFD / blok / jenis pupuk / tanggal…"
                 className="h-9"
               />
             </div>
@@ -875,7 +837,7 @@ export default function RencanaRiwayat() {
             </div>
           </div>
 
-          {/* Tabel + virtual scroll + pagination */}
+          {/* Tabel + virtual scroll */}
           <div
             ref={scrollParentRef}
             className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-md max-h-[520px]"
@@ -912,7 +874,7 @@ export default function RencanaRiwayat() {
 
                   return (
                     <tr
-                      key={`${r.id}-${r.kebun}-${r.kodeKebun}-${r.tanggal}-${virtualRow.index}`}
+                      key={`${r.id}-${virtualRow.index}`}
                       className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
                     >
                       <td className="px-3 py-2">{r.tanggal}</td>
@@ -993,31 +955,14 @@ export default function RencanaRiwayat() {
             </table>
           </div>
 
-          {/* Pagination sederhana */}
+          {/* Info ringkas (tanpa pagination halaman) */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-600 dark:text-slate-300">
             <span>
-              Menampilkan {startIdx}-{endIdx} dari {total} data
+              Menampilkan {filtered.length} data dari total {total} data
               {selectedKebun && (
                 <> &nbsp; (filter kebun: {selectedKebun})</>
               )}
-              &nbsp; (Halaman {page} / {totalPages})
             </span>
-            <div className="flex gap-2 justify-end">
-              <button
-                disabled={page === 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 disabled:opacity-50"
-              >
-                Prev
-              </button>
-              <button
-                disabled={page === totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
           </div>
         </CardContent>
       </Card>

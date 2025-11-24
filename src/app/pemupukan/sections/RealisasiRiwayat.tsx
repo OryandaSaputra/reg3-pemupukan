@@ -93,7 +93,7 @@ function makeSheetName(raw: string): string {
   return name;
 }
 
-// helper mapping
+// mapping API → HistoryRow
 function mapApiToHistoryRow(r: ApiRealisasi): HistoryRow {
   return {
     id: r.id,
@@ -113,16 +113,15 @@ function mapApiToHistoryRow(r: ApiRealisasi): HistoryRow {
   };
 }
 
-// helper: fetch semua realisasi (tanpa pagination) untuk export
+// GET semua realisasi (tanpa pagination) → dipakai untuk RIWAYAT & EXPORT
 async function fetchAllRealisasiForExport(): Promise<HistoryRow[]> {
   const res = await fetch("/api/pemupukan/realisasi", { cache: "no-store" });
   if (!res.ok) {
-    throw new Error("Gagal mengambil semua data realisasi untuk export");
+    throw new Error("Gagal mengambil semua data realisasi");
   }
 
   const json = await res.json();
   const dataArray: ApiRealisasi[] = Array.isArray(json) ? json : json.data;
-
   return dataArray.map(mapApiToHistoryRow);
 }
 
@@ -130,52 +129,24 @@ export default function RealisasiRiwayat() {
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
-  const pageSize = 200;
   const [total, setTotal] = useState(0);
-
-  const router = useRouter();
   const [selectedKebun, setSelectedKebun] = useState<string>("");
 
-  // container untuk virtual scroll
+  const router = useRouter();
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
 
-  // ======== FETCH DATA DENGAN PAGINATION API ========
+  // ============= LOAD SEMUA DATA SEKALI SAJA =============
   useEffect(() => {
     let active = true;
+
     (async () => {
       try {
         setLoading(true);
-
-        const params = new URLSearchParams();
-        params.set("page", String(page));
-        params.set("pageSize", String(pageSize));
-        if (selectedKebun) {
-          params.set("kebun", selectedKebun);
-        }
-
-        const res = await fetch(
-          `/api/pemupukan/realisasi?${params.toString()}`,
-          {
-            cache: "no-store",
-          }
-        );
-        if (!res.ok) {
-          throw new Error("Gagal mengambil data realisasi");
-        }
-        const json = await res.json();
-
-        const dataArray: ApiRealisasi[] = Array.isArray(json)
-          ? json
-          : json.data;
-        const meta = Array.isArray(json) ? undefined : json.meta;
-
+        const allRows = await fetchAllRealisasiForExport();
         if (!active) return;
 
-        const mapped: HistoryRow[] = dataArray.map(mapApiToHistoryRow);
-
-        setRows(mapped);
-        setTotal(meta?.total ?? mapped.length);
+        setRows(allRows);
+        setTotal(allRows.length);
       } catch (err) {
         console.error(err);
         if (active) {
@@ -190,14 +161,9 @@ export default function RealisasiRiwayat() {
     return () => {
       active = false;
     };
-  }, [page, pageSize, selectedKebun]);
+  }, []);
 
-  // reset ke halaman 1 jika filter kebun berubah
-  useEffect(() => {
-    setPage(1);
-  }, [selectedKebun]);
-
-  // opsi kebun dari data halaman ini
+  // opsi kebun dari SELURUH data
   const kebunOptions = useMemo(() => {
     const codes = Array.from(
       new Set(
@@ -213,40 +179,43 @@ export default function RealisasiRiwayat() {
     }));
   }, [rows]);
 
-  // filter pencarian (hanya di halaman sekarang) + sort desc tanggal
+  // filter kebun + search + sort tanggal desc
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
-    const base = term
-      ? rows.filter((r) => {
-          const keb = KEBUN_LABEL[r.kebun] ?? r.kebun ?? "";
-          return [
-            r.kategori,
-            keb,
-            r.kodeKebun ?? "",
-            r.afd ?? "",
-            r.blok ?? "",
-            r.jenisPupuk ?? "",
-            r.tanggal ?? "",
-          ]
-            .map((v) => String(v).toLowerCase())
-            .some((v) => v.includes(term));
-        })
-      : rows;
+
+    let base = rows;
+
+    if (selectedKebun) {
+      base = base.filter((r) => r.kebun === selectedKebun);
+    }
+
+    if (term) {
+      base = base.filter((r) => {
+        const keb = KEBUN_LABEL[r.kebun] ?? r.kebun ?? "";
+        return [
+          r.kategori,
+          keb,
+          r.kodeKebun ?? "",
+          r.afd ?? "",
+          r.blok ?? "",
+          r.jenisPupuk ?? "",
+          r.tanggal ?? "",
+        ]
+          .map((v) => String(v).toLowerCase())
+          .some((v) => v.includes(term));
+      });
+    }
 
     return [...base].sort(
       (a, b) => parseDateValue(b.tanggal) - parseDateValue(a.tanggal)
     );
-  }, [rows, q]);
+  }, [rows, q, selectedKebun]);
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const startIdx = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const endIdx = Math.min(page * pageSize, total);
-
-  // virtualizer untuk baris tabel di HALAMAN AKTIF
+  // virtualizer: hanya untuk baris yang sudah ter-filter
   const rowVirtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => scrollParentRef.current,
-    estimateSize: () => 32, // tinggi estimasi 1 baris (px)
+    estimateSize: () => 32,
     overscan: 10,
   });
 
@@ -359,7 +328,6 @@ export default function RealisasiRiwayat() {
 
       setRows([]);
       setQ("");
-      setPage(1);
       setTotal(0);
 
       await Swal.fire({
@@ -412,10 +380,10 @@ export default function RealisasiRiwayat() {
 
     try {
       const res = await fetch(
-        `/api/pemupukan/realisasi?kebun=${encodeURIComponent(selectedKebun)}`,
-        {
-          method: "DELETE",
-        }
+        `/api/pemupukan/realisasi?kebun=${encodeURIComponent(
+          selectedKebun
+        )}`,
+        { method: "DELETE" }
       );
 
       if (!res.ok) {
@@ -436,6 +404,9 @@ export default function RealisasiRiwayat() {
       const deletedCount = json?.deletedCount ?? 0;
 
       setRows((prev) => prev.filter((r) => r.kebun !== selectedKebun));
+      setTotal((prev) =>
+        deletedCount > 0 ? Math.max(0, prev - deletedCount) : prev
+      );
 
       await Swal.fire({
         title: "Berhasil",
@@ -457,6 +428,8 @@ export default function RealisasiRiwayat() {
   const handleEdit = (row: HistoryRow) => {
     router.push(`/pemupukan/realisasi/edit?id=${row.id}`);
   };
+
+  // ===== EXPORT (pakai fetchAllRealisasiForExport yang sama) =====
 
   const handleExportExcelAll = async () => {
     try {
@@ -697,7 +670,6 @@ export default function RealisasiRiwayat() {
       const doc = new jsPDFmod.jsPDF({ orientation: "landscape" });
 
       const kebunLabel = KEBUN_LABEL[selectedKebun] ?? selectedKebun;
-
       doc.setFontSize(10);
       doc.text(
         `Realisasi Pemupukan - Kebun ${kebunLabel} (${selectedKebun})`,
@@ -754,7 +726,7 @@ export default function RealisasiRiwayat() {
         <CardHeader className="pb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle className="text-[13px]">
-              Pencarian, Aksi, & Export
+              Pencarian, Aksi, &amp; Export
             </CardTitle>
             <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
               Filter data, hapus, atau export riwayat realisasi ke Excel/PDF.
@@ -817,7 +789,7 @@ export default function RealisasiRiwayat() {
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Cari kategori (TM/TBM/BIBITAN) / kebun / AFD / blok / jenis pupuk / tanggal… (hanya dalam halaman ini)"
+                placeholder="Cari kategori (TM/TBM/BIBITAN) / kebun / AFD / blok / jenis pupuk / tanggal…"
                 className="h-9"
               />
             </div>
@@ -847,7 +819,7 @@ export default function RealisasiRiwayat() {
             </div>
           </div>
 
-          {/* Tabel dengan virtual scroll + pagination */}
+          {/* Tabel + virtual scroll */}
           <div
             ref={scrollParentRef}
             className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-md max-h-[520px]"
@@ -884,7 +856,7 @@ export default function RealisasiRiwayat() {
 
                   return (
                     <tr
-                      key={`${r.id}-${r.kebun}-${r.kodeKebun}-${r.tanggal}-${virtualRow.index}`}
+                      key={`${r.id}-${virtualRow.index}`}
                       className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
                     >
                       <td className="px-3 py-2">{r.tanggal}</td>
@@ -965,31 +937,14 @@ export default function RealisasiRiwayat() {
             </table>
           </div>
 
-          {/* Info & Pagination */}
+          {/* Info ringkas (tanpa pagination) */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-600 dark:text-slate-300">
             <span>
-              Menampilkan {startIdx}-{endIdx} dari {total} data
+              Menampilkan {filtered.length} data dari total {total} data
               {selectedKebun && (
                 <> &nbsp; (filter kebun: {selectedKebun})</>
               )}
-              &nbsp; (Halaman {page} / {totalPages})
             </span>
-            <div className="flex gap-2 justify-end">
-              <button
-                disabled={page === 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 disabled:opacity-50"
-              >
-                Prev
-              </button>
-              <button
-                disabled={page === totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
           </div>
         </CardContent>
       </Card>
