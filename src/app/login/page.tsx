@@ -46,7 +46,7 @@ export default function LoginPage() {
   // user yang buka /login padahal sudah login), langsung redirect.
   useEffect(() => {
     if (status === "authenticated") {
-      setLoading(false); // pastikan loading dimatikan
+      setLoading(false); // pastikan loading dimatikan (kalau masih di sini)
       router.replace("/pemupukan");
     }
   }, [status, router]);
@@ -69,11 +69,10 @@ export default function LoginPage() {
       return;
     }
 
-    // Kalau berhasil, biarkan loading tetap true sebentar.
-    // Ketika NextAuth selesai update session, status akan jadi "authenticated"
-    // dan useEffect di atas yang akan:
-    // - setLoading(false)
-    // - router.replace("/pemupukan")
+    // Kalau berhasil, biarkan loading tetap true.
+    // Saat NextAuth update session → status = "authenticated"
+    // → useEffect di atas akan redirect ke /pemupukan
+    // dan halaman login (termasuk overlay) otomatis ke-unmount.
 
     if (remember) {
       localStorage.setItem("ptpn5-username", username);
@@ -311,6 +310,43 @@ export default function LoginPage() {
           </motion.div>
         </motion.div>
       </div>
+
+      {/* 🔄 FULLSCREEN LOADING SPINNER – hilang setelah masuk dashboard */}
+      {loading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-emerald-950/80 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="flex flex-col items-center gap-4"
+          >
+            <div className="relative flex items-center justify-center">
+              {/* Lingkaran luar berputar */}
+              <div className="h-24 w-24 rounded-full border-2 border-emerald-500/20 border-t-emerald-300/90 animate-spin" />
+
+              {/* Logo PTPN 4 di tengah */}
+              <div className="absolute h-16 w-16 rounded-2xl bg-white flex items-center justify-center shadow-lg shadow-emerald-900/60 overflow-hidden">
+                <Image
+                  src="https://www.ptpn4.co.id/build/assets/Logo%20PTPN%20IV-CyWK9qsP.png"
+                  alt="PTPN 4"
+                  fill
+                  unoptimized
+                  className="object-contain p-1.5"
+                />
+              </div>
+            </div>
+
+            <div className="text-center space-y-1">
+              <p className="text-[11px] font-semibold tracking-[0.25em] uppercase text-emerald-100/90">
+                PTPN 4 • Divisi Tanaman
+              </p>
+              <p className="text-sm text-emerald-100/80">
+                Memuat Dashboard Pemupukan...
+              </p>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </motion.div>
   );
 }

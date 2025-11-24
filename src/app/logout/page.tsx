@@ -1,7 +1,8 @@
 // src/app/logout/page.tsx
 "use client";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useState } from "react";
+import Image from "next/image";
 import { signOut } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LogOut, ArrowLeft } from "lucide-react";
@@ -14,22 +15,29 @@ function LogoutPageContent() {
   // jika ada ?from=/xxx akan dikembalikan ke sana ketika batal
   const from = searchParams.get("from") || "/pemupukan";
 
+  const [loading, setLoading] = useState(false);
+
   const handleLogout = async () => {
     // kalau mau clear localStorage lain, tambahkan di sini
     // localStorage.removeItem("ptpn4-username");
+
+    setLoading(true);
 
     await signOut({
       callbackUrl: "/login",
       redirect: true,
     });
+
+    // tidak perlu setLoading(false) karena akan redirect & unmount
   };
 
   const handleCancel = () => {
+    if (loading) return; // cegah klik saat sedang logout
     router.push(from);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-950 via-emerald-900 to-slate-950 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-950 via-emerald-900 to-slate-950 px-4 relative">
       <motion.div
         className="max-w-md w-full space-y-4 text-emerald-50"
         initial={{ opacity: 0, y: 20, scale: 0.98 }}
@@ -91,16 +99,18 @@ function LogoutPageContent() {
             <button
               type="button"
               onClick={handleLogout}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium rounded-xl px-3 py-2.5 bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-900/40 border border-rose-300/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 transition-colors"
+              disabled={loading}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium rounded-xl px-3 py-2.5 bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-900/40 border border-rose-300/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <LogOut className="h-4 w-4" />
-              <span>Ya, logout sekarang</span>
+              <span>{loading ? "Sedang logout..." : "Ya, logout sekarang"}</span>
             </button>
 
             <button
               type="button"
               onClick={handleCancel}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium rounded-xl px-3 py-2.5 border border-emerald-400/50 text-emerald-100 bg-emerald-900/40 hover:bg-emerald-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 transition-colors"
+              disabled={loading}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium rounded-xl px-3 py-2.5 border border-emerald-400/50 text-emerald-100 bg-emerald-900/40 hover:bg-emerald-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <ArrowLeft className="h-4 w-4" />
               <span>Batal & kembali</span>
@@ -118,6 +128,43 @@ function LogoutPageContent() {
           © {new Date().getFullYear()} PTPN 4 • Divisi Tanaman • Regional III
         </motion.p>
       </motion.div>
+
+      {/* 🔄 FULLSCREEN LOADING SPINNER – sama style dengan login */}
+      {loading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-emerald-950/80 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="flex flex-col items-center gap-4"
+          >
+            <div className="relative flex items-center justify-center">
+              {/* Lingkaran luar berputar */}
+              <div className="h-24 w-24 rounded-full border-2 border-emerald-500/20 border-t-emerald-300/90 animate-spin" />
+
+              {/* Logo PTPN 4 di tengah */}
+              <div className="absolute h-16 w-16 rounded-2xl bg-white flex items-center justify-center shadow-lg shadow-emerald-900/60 overflow-hidden">
+                <Image
+                  src="https://www.ptpn4.co.id/build/assets/Logo%20PTPN%20IV-CyWK9qsP.png"
+                  alt="PTPN 4"
+                  fill
+                  unoptimized
+                  className="object-contain p-1.5"
+                />
+              </div>
+            </div>
+
+            <div className="text-center space-y-1">
+              <p className="text-[11px] font-semibold tracking-[0.25em] uppercase text-emerald-100/90">
+                PTPN 4 • Divisi Tanaman
+              </p>
+              <p className="text-sm text-emerald-100/80">
+                Mengakhiri sesi & keluar dari dashboard...
+              </p>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
