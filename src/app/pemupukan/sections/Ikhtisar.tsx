@@ -2,21 +2,9 @@ import SectionHeader from "../components/SectionHeader";
 // import ScopeCard from "../components/ScopeCard"; // sudah tidak dipakai
 import { Card, CardContent } from "@/components/ui/card";
 import StatLine from "../components/StatLine";
-import {
-  CalendarDays,
-  TrendingUp,
-  TrendingDown,
-  CheckCircle2,
-  AlertTriangle,
-  type LucideIcon,
-} from "lucide-react";
 
 export default function Ikhtisar({
   totals,
-  realisasiHarian = 0,
-  rencanaBesok = 0,
-  tanggalHariIni,
-  tanggalBesok,
 }: {
   totals: {
     totalRencana: number;
@@ -53,84 +41,6 @@ export default function Ikhtisar({
   } = totals;
 
   const num = (v: number) => v.toLocaleString("id-ID");
-  const fmtDate = (iso?: string) => {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "";
-    return d.toLocaleDateString("id-ID", {
-      weekday: "short",
-      day: "2-digit",
-      month: "short",
-    });
-  };
-
-  const labelHarian = `Realisasi Harian${tanggalHariIni ? ` (${fmtDate(tanggalHariIni)})` : ""
-    } (Kg)`;
-  const labelRencana = `Rencana Besok${tanggalBesok ? ` (${fmtDate(tanggalBesok)})` : ""
-    } (Kg)`;
-
-  const pct = rencanaBesok > 0 ? (realisasiHarian / rencanaBesok) * 100 : 0;
-  const deltaKg = realisasiHarian - rencanaBesok;
-
-  type Tone = "good" | "warn" | "bad" | "neutral";
-  const tone: Tone =
-    rencanaBesok <= 0 ? "neutral" : pct >= 100 ? "good" : pct >= 80 ? "warn" : "bad";
-
-  type ToneSpec = {
-    ring: string;
-    bg: string;
-    bar: string;
-    text: string;
-    strip: string;
-    IconMain: LucideIcon;
-    IconDeltaUp: LucideIcon;
-    IconDeltaDown: LucideIcon;
-  };
-
-  const toneMap: Record<Tone, ToneSpec> = {
-    good: {
-      ring: "ring-emerald-200/70 dark:ring-emerald-900",
-      bg: "bg-emerald-50/60 dark:bg-emerald-950/30",
-      bar: "bg-emerald-500",
-      text: "text-emerald-700 dark:text-emerald-300",
-      strip: "bg-emerald-500",
-      IconMain: CheckCircle2,
-      IconDeltaUp: TrendingUp,
-      IconDeltaDown: TrendingDown,
-    },
-    warn: {
-      ring: "ring-amber-200/70 dark:ring-amber-900",
-      bg: "bg-amber-50/60 dark:bg-amber-950/30",
-      bar: "bg-amber-500",
-      text: "text-amber-700 dark:text-amber-300",
-      strip: "bg-amber-500",
-      IconMain: AlertTriangle,
-      IconDeltaUp: TrendingUp,
-      IconDeltaDown: TrendingDown,
-    },
-    bad: {
-      ring: "ring-rose-200/70 dark:ring-rose-900",
-      bg: "bg-rose-50/60 dark:bg-rose-950/30",
-      bar: "bg-rose-500",
-      text: "text-rose-700 dark:text-rose-300",
-      strip: "bg-rose-500",
-      IconMain: TrendingDown,
-      IconDeltaUp: TrendingUp,
-      IconDeltaDown: TrendingDown,
-    },
-    neutral: {
-      ring: "ring-slate-200/70 dark:ring-slate-800",
-      bg: "bg-white/80 dark:bg-slate-900/60",
-      bar: "bg-slate-500",
-      text: "text-slate-600 dark:text-slate-300",
-      strip: "bg-slate-300 dark:bg-slate-700",
-      IconMain: CalendarDays,
-      IconDeltaUp: TrendingUp,
-      IconDeltaDown: TrendingDown,
-    },
-  };
-
-  const T = toneMap[tone];
 
   const kpiCardCx =
     "h-full shadow-sm hover:shadow-md transition-shadow rounded-2xl ring-1 " +

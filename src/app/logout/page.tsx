@@ -15,25 +15,30 @@ function LogoutPageContent() {
   // jika ada ?from=/xxx akan dikembalikan ke sana ketika batal
   const from = searchParams.get("from") || "/pemupukan";
 
-  const [loading, setLoading] = useState(false);
+  // "none" | "logout" | "cancel"
+  const [loadingMode, setLoadingMode] = useState<"none" | "logout" | "cancel">(
+    "none"
+  );
+  const loading = loadingMode !== "none";
 
   const handleLogout = async () => {
     // kalau mau clear localStorage lain, tambahkan di sini
     // localStorage.removeItem("ptpn4-username");
 
-    setLoading(true);
+    setLoadingMode("logout");
 
     await signOut({
       callbackUrl: "/login",
       redirect: true,
     });
 
-    // tidak perlu setLoading(false) karena akan redirect & unmount
+    // tidak perlu reset loadingMode karena akan redirect & unmount
   };
 
   const handleCancel = () => {
-    if (loading) return; // cegah klik saat sedang logout
-    router.push(from);
+    if (loading) return; // cegah klik saat sedang proses lain
+    setLoadingMode("cancel");
+    router.push(from); // kembali ke halaman sebelumnya (misal /pemupukan)
   };
 
   return (
@@ -81,14 +86,16 @@ function LogoutPageContent() {
                 Yakin ingin logout?
               </h1>
               <p className="text-xs leading-snug text-emerald-100/80">
-                Sesi Anda pada sistem pemupukan akan diakhiri. Untuk mengakses kembali dashboard,
-                Anda perlu login ulang menggunakan akun yang sama.
+                Sesi Anda pada sistem pemupukan akan diakhiri. Untuk mengakses
+                kembali dashboard, Anda perlu login ulang menggunakan akun yang
+                sama.
               </p>
 
               <div className="mt-3 rounded-lg bg-emerald-950/40 border border-emerald-700/40 px-3 py-2">
                 <p className="text-[11px] text-emerald-100/75 leading-snug">
-                  <span className="font-medium text-emerald-200">Catatan:</span> Pastikan tidak
-                  ada proses input atau impor data yang belum tersimpan sebelum Anda logout.
+                  <span className="font-medium text-emerald-200">Catatan:</span>{" "}
+                  Pastikan tidak ada proses input atau impor data yang belum
+                  tersimpan sebelum Anda logout.
                 </p>
               </div>
             </div>
@@ -103,7 +110,9 @@ function LogoutPageContent() {
               className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium rounded-xl px-3 py-2.5 bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-900/40 border border-rose-300/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <LogOut className="h-4 w-4" />
-              <span>{loading ? "Sedang logout..." : "Ya, logout sekarang"}</span>
+              <span>
+                {loadingMode === "logout" ? "Sedang logout..." : "Ya, logout sekarang"}
+              </span>
             </button>
 
             <button
@@ -113,7 +122,9 @@ function LogoutPageContent() {
               className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium rounded-xl px-3 py-2.5 border border-emerald-400/50 text-emerald-100 bg-emerald-900/40 hover:bg-emerald-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <ArrowLeft className="h-4 w-4" />
-              <span>Batal & kembali</span>
+              <span>
+                {loadingMode === "cancel" ? "Sedang kembali..." : "Batal & kembali"}
+              </span>
             </button>
           </div>
         </motion.div>
@@ -159,7 +170,9 @@ function LogoutPageContent() {
                 PTPN 4 • Divisi Tanaman
               </p>
               <p className="text-sm text-emerald-100/80">
-                Mengakhiri sesi & keluar dari dashboard...
+                {loadingMode === "logout"
+                  ? "Mengakhiri sesi & keluar dari dashboard..."
+                  : "Membatalkan logout & kembali ke dashboard..."}
               </p>
             </div>
           </motion.div>

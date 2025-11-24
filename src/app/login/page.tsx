@@ -46,7 +46,7 @@ export default function LoginPage() {
   // user yang buka /login padahal sudah login), langsung redirect.
   useEffect(() => {
     if (status === "authenticated") {
-      setLoading(false); // pastikan loading dimatikan (kalau masih di sini)
+      // setLoading(false); // pastikan loading dimatikan (kalau masih di sini)
       router.replace("/pemupukan");
     }
   }, [status, router]);
