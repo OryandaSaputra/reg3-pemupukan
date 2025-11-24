@@ -642,7 +642,7 @@ export default function RencanaTambah() {
       }
 
       // === KIRIM BULK DALAM CHUNK (untuk >500 baris) ===
-      const CHUNK_SIZE = 300;
+      const CHUNK_SIZE = 500;
       let totalInserted = 0;
       let totalSent = 0;
 
