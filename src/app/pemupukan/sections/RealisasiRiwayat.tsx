@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import SectionHeader from "../components/SectionHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { KEBUN_LABEL } from "../constants";
+import { KEBUN_LABEL, ORDER_DTM, ORDER_DBR } from "../constants";
+import { usePemupukan } from "../context";
 import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -133,10 +134,35 @@ export default function RealisasiRiwayat() {
   const [q, setQ] = useState("");
   const [total, setTotal] = useState(0);
   const [selectedKebun, setSelectedKebun] = useState<string>("");
-  const [page, setPage] = useState(1);
 
   const router = useRouter();
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
+
+  // STATE OVERLAY EXPORT
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState("");
+  const [exportTotalGroups, setExportTotalGroups] = useState(0);
+  const [exportProcessedGroups, setExportProcessedGroups] = useState(0);
+  const [exportCurrentKebun, setExportCurrentKebun] = useState<string | null>(
+    null
+  );
+
+  // ====== FILTER GLOBAL DARI CONTEXT (FilterPanel) ======
+  const {
+    distrik,
+    kebun: globalKebun,
+    kategori,
+    afd,
+    tt,
+    blok,
+    jenis,
+    aplikasi,
+    dataYear,
+    dateFrom,
+    dateTo,
+  } = usePemupukan();
+
+  const [page, setPage] = useState(1);
 
   // ============= LOAD SEMUA DATA SEKALI SAJA =============
   useEffect(() => {
@@ -166,10 +192,24 @@ export default function RealisasiRiwayat() {
     };
   }, []);
 
-  // reset halaman ketika filter/search berubah
+  // reset halaman ketika filter/search/global filter berubah
   useEffect(() => {
     setPage(1);
-  }, [q, selectedKebun]);
+  }, [
+    q,
+    selectedKebun,
+    distrik,
+    globalKebun,
+    kategori,
+    afd,
+    tt,
+    blok,
+    jenis,
+    aplikasi,
+    dataYear,
+    dateFrom,
+    dateTo,
+  ]);
 
   // opsi kebun dari SELURUH data
   const kebunOptions = useMemo(() => {
@@ -187,16 +227,81 @@ export default function RealisasiRiwayat() {
     }));
   }, [rows]);
 
-  // filter kebun + search + sort tanggal desc
+  // filter global + kebun lokal + search + sort tanggal desc
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
 
     let base = rows;
 
+    // 1) filter distrik -> list kebun (DTM / DBR)
+    if (distrik !== "all") {
+      const allowedKebun =
+        distrik === "DTM" ? ORDER_DTM : distrik === "DBR" ? ORDER_DBR : [];
+      if (allowedKebun.length) {
+        base = base.filter((r) => allowedKebun.includes(r.kebun));
+      }
+    }
+
+    // 2) filter kebun dari FilterPanel (global)
+    if (globalKebun !== "all") {
+      base = base.filter((r) => r.kebun === globalKebun);
+    }
+
+    // 3) kategori
+    if (kategori !== "all") {
+      base = base.filter((r) => r.kategori === kategori);
+    }
+
+    // 4) AFD / TT / Blok / Jenis Pupuk
+    if (afd !== "all") {
+      base = base.filter((r) => r.afd === afd);
+    }
+    if (tt !== "all") {
+      base = base.filter((r) => r.tt === tt);
+    }
+    if (blok !== "all") {
+      base = base.filter((r) => r.blok === blok);
+    }
+    if (jenis !== "all") {
+      base = base.filter((r) => r.jenisPupuk === jenis);
+    }
+
+    // 5) Aplikasi (global)
+    if (aplikasi !== "all") {
+      base = base.filter(
+        (r) => String(r.aplikasi ?? "") === String(aplikasi)
+      );
+    }
+
+    // 6) Tahun Data (global)
+    if (dataYear) {
+      base = base.filter(
+        (r) =>
+          r.tanggal !== "-" &&
+          !!r.tanggal &&
+          r.tanggal.startsWith(String(dataYear))
+      );
+    }
+
+    // 7) Range tanggal global
+    if (dateFrom || dateTo) {
+      const fromVal = dateFrom ? parseDateValue(dateFrom) : 0;
+      const toVal = dateTo ? parseDateValue(dateTo) : Number.POSITIVE_INFINITY;
+
+      base = base.filter((r) => {
+        const t = parseDateValue(r.tanggal);
+        if (dateFrom && t < fromVal) return false;
+        if (dateTo && t > toVal) return false;
+        return true;
+      });
+    }
+
+    // 8) FILTER KHUSUS HALAMAN (dropdown "Filter / Pilih kebun…")
     if (selectedKebun) {
       base = base.filter((r) => r.kebun === selectedKebun);
     }
 
+    // 9) FILTER TEKS (search bar)
     if (term) {
       base = base.filter((r) => {
         const keb = KEBUN_LABEL[r.kebun] ?? r.kebun ?? "";
@@ -205,6 +310,7 @@ export default function RealisasiRiwayat() {
           keb,
           r.kodeKebun ?? "",
           r.afd ?? "",
+          r.tt ?? "",
           r.blok ?? "",
           r.jenisPupuk ?? "",
           r.tanggal ?? "",
@@ -214,10 +320,26 @@ export default function RealisasiRiwayat() {
       });
     }
 
+    // sort terbaru di atas
     return [...base].sort(
       (a, b) => parseDateValue(b.tanggal) - parseDateValue(a.tanggal)
     );
-  }, [rows, q, selectedKebun]);
+  }, [
+    rows,
+    q,
+    selectedKebun,
+    distrik,
+    globalKebun,
+    kategori,
+    afd,
+    tt,
+    blok,
+    jenis,
+    aplikasi,
+    dataYear,
+    dateFrom,
+    dateTo,
+  ]);
 
   // ====== PAGINATION (per 500 data) ======
   const totalPages = useMemo(
@@ -229,12 +351,9 @@ export default function RealisasiRiwayat() {
   const pageStartIndex = (currentPage - 1) * PAGE_SIZE;
   const pageRows = filtered.slice(pageStartIndex, pageStartIndex + PAGE_SIZE);
 
-  const showingFrom =
-    filtered.length === 0 ? 0 : pageStartIndex + 1;
+  const showingFrom = filtered.length === 0 ? 0 : pageStartIndex + 1;
   const showingTo =
-    filtered.length === 0
-      ? 0
-      : pageStartIndex + pageRows.length;
+    filtered.length === 0 ? 0 : pageStartIndex + pageRows.length;
 
   // virtualizer: hanya untuk baris yang sudah ter-filter & ter-paginate
   const rowVirtualizer = useVirtualizer({
@@ -245,8 +364,7 @@ export default function RealisasiRiwayat() {
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
-  const paddingTop =
-    virtualItems.length > 0 ? virtualItems[0].start || 0 : 0;
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start || 0 : 0;
   const paddingBottom =
     virtualItems.length > 0
       ? rowVirtualizer.getTotalSize() -
@@ -353,6 +471,7 @@ export default function RealisasiRiwayat() {
 
       setRows([]);
       setQ("");
+      setSelectedKebun("");
       setTotal(0);
 
       await Swal.fire({
@@ -405,9 +524,7 @@ export default function RealisasiRiwayat() {
 
     try {
       const res = await fetch(
-        `/api/pemupukan/realisasi?kebun=${encodeURIComponent(
-          selectedKebun
-        )}`,
+        `/api/pemupukan/realisasi?kebun=${encodeURIComponent(selectedKebun)}`,
         { method: "DELETE" }
       );
 
@@ -432,6 +549,7 @@ export default function RealisasiRiwayat() {
       setTotal((prev) =>
         deletedCount > 0 ? Math.max(0, prev - deletedCount) : prev
       );
+      setSelectedKebun("");
 
       await Swal.fire({
         title: "Berhasil",
@@ -443,7 +561,8 @@ export default function RealisasiRiwayat() {
       console.error(err);
       await Swal.fire({
         title: "Terjadi kesalahan",
-        text: "Tidak dapat menghapus data per kebun. Cek console atau hubungi admin.",
+        text:
+          "Tidak dapat menghapus data per kebun. Cek console atau hubungi admin.",
         icon: "error",
         confirmButtonText: "OK",
       });
@@ -454,10 +573,22 @@ export default function RealisasiRiwayat() {
     router.push(`/pemupukan/realisasi/edit?id=${row.id}`);
   };
 
+  // ==== HELPER: reset state overlay export ====
+  const resetExportState = () => {
+    setExporting(false);
+    setExportMessage("");
+    setExportTotalGroups(0);
+    setExportProcessedGroups(0);
+    setExportCurrentKebun(null);
+  };
+
   // ===== EXPORT (pakai fetchAllRealisasiForExport yang sama) =====
 
   const handleExportExcelAll = async () => {
     try {
+      setExporting(true);
+      setExportMessage("Export Excel (Semua Kebun)…");
+
       const allRows = await fetchAllRealisasiForExport();
 
       if (allRows.length === 0) {
@@ -479,8 +610,19 @@ export default function RealisasiRiwayat() {
         grouped[r.kebun].push(r);
       });
 
-      Object.entries(grouped).forEach(([kebunCode, kebunRows]) => {
-        if (kebunRows.length === 0) return;
+      const kebunEntries = Object.entries(grouped).filter(
+        ([, kebunRows]) => kebunRows.length > 0
+      );
+
+      setExportTotalGroups(kebunEntries.length);
+      setExportProcessedGroups(0);
+
+      for (let i = 0; i < kebunEntries.length; i++) {
+        const [kebunCode, kebunRows] = kebunEntries[i];
+
+        setExportCurrentKebun(kebunCode);
+        setExportProcessedGroups(i);
+        await new Promise((resolve) => setTimeout(resolve, 0));
 
         const kebunLabel = KEBUN_LABEL[kebunCode] ?? kebunCode;
         const sheetName = makeSheetName(kebunLabel);
@@ -506,7 +648,9 @@ export default function RealisasiRiwayat() {
 
         const ws = XLSX.utils.aoa_to_sheet(sheetData);
         XLSX.utils.book_append_sheet(workbook, ws, sheetName);
-      });
+      }
+
+      setExportProcessedGroups(kebunEntries.length);
 
       XLSX.writeFile(workbook, "Realisasi_Pemupukan_Semua_Kebun.xlsx");
     } catch (err) {
@@ -517,6 +661,8 @@ export default function RealisasiRiwayat() {
         icon: "error",
         confirmButtonText: "OK",
       });
+    } finally {
+      resetExportState();
     }
   };
 
@@ -532,6 +678,12 @@ export default function RealisasiRiwayat() {
     }
 
     try {
+      setExporting(true);
+      setExportMessage(`Export Excel (Kebun ${selectedKebun})…`);
+      setExportTotalGroups(1);
+      setExportProcessedGroups(0);
+      setExportCurrentKebun(selectedKebun);
+
       const allRows = await fetchAllRealisasiForExport();
       const kebunRows = allRows.filter((r) => r.kebun === selectedKebun);
 
@@ -544,6 +696,8 @@ export default function RealisasiRiwayat() {
         });
         return;
       }
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const XLSX = await import("xlsx");
       const workbook = XLSX.utils.book_new();
@@ -573,6 +727,8 @@ export default function RealisasiRiwayat() {
       const ws = XLSX.utils.aoa_to_sheet(sheetData);
       XLSX.utils.book_append_sheet(workbook, ws, sheetName);
 
+      setExportProcessedGroups(1);
+
       const fileName = `Realisasi_Pemupukan_${selectedKebun}.xlsx`;
       XLSX.writeFile(workbook, fileName);
     } catch (err) {
@@ -583,11 +739,16 @@ export default function RealisasiRiwayat() {
         icon: "error",
         confirmButtonText: "OK",
       });
+    } finally {
+      resetExportState();
     }
   };
 
   const handleExportPdfAll = async () => {
     try {
+      setExporting(true);
+      setExportMessage("Export PDF (Semua Kebun)…");
+
       const allRows = await fetchAllRealisasiForExport();
 
       if (allRows.length === 0) {
@@ -614,8 +775,17 @@ export default function RealisasiRiwayat() {
         ([, kebunRows]) => kebunRows.length > 0
       );
 
-      kebunEntries.forEach(([kebunCode, kebunRows], idx) => {
-        if (idx > 0) {
+      setExportTotalGroups(kebunEntries.length);
+      setExportProcessedGroups(0);
+
+      for (let i = 0; i < kebunEntries.length; i++) {
+        const [kebunCode, kebunRows] = kebunEntries[i];
+
+        setExportCurrentKebun(kebunCode);
+        setExportProcessedGroups(i);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        if (i > 0) {
           doc.addPage("landscape");
         }
 
@@ -651,7 +821,9 @@ export default function RealisasiRiwayat() {
           headStyles: { fillColor: [226, 232, 240] },
           margin: { left: 10, right: 10 },
         });
-      });
+      }
+
+      setExportProcessedGroups(kebunEntries.length);
 
       doc.save("Realisasi_Pemupukan_Semua_Kebun.pdf");
     } catch (err) {
@@ -662,6 +834,8 @@ export default function RealisasiRiwayat() {
         icon: "error",
         confirmButtonText: "OK",
       });
+    } finally {
+      resetExportState();
     }
   };
 
@@ -677,6 +851,12 @@ export default function RealisasiRiwayat() {
     }
 
     try {
+      setExporting(true);
+      setExportMessage(`Export PDF (Kebun ${selectedKebun})…`);
+      setExportTotalGroups(1);
+      setExportProcessedGroups(0);
+      setExportCurrentKebun(selectedKebun);
+
       const allRows = await fetchAllRealisasiForExport();
       const kebunRows = allRows.filter((r) => r.kebun === selectedKebun);
 
@@ -689,6 +869,8 @@ export default function RealisasiRiwayat() {
         });
         return;
       }
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const jsPDFmod = await import("jspdf");
       const autoTable = (await import("jspdf-autotable")).default;
@@ -727,6 +909,8 @@ export default function RealisasiRiwayat() {
         margin: { left: 10, right: 10 },
       });
 
+      setExportProcessedGroups(1);
+
       const fileName = `Realisasi_Pemupukan_${selectedKebun}.pdf`;
       doc.save(fileName);
     } catch (err) {
@@ -737,277 +921,336 @@ export default function RealisasiRiwayat() {
         icon: "error",
         confirmButtonText: "OK",
       });
+    } finally {
+      resetExportState();
     }
   };
 
-  return (
-    <section className="space-y-2">
-      <SectionHeader
-        title="Riwayat Realisasi"
-        desc="Daftar input realisasi terbaru dari database"
-      />
+  const progressPercent =
+    exportTotalGroups > 0
+      ? Math.min(
+          100,
+          (exportProcessedGroups / exportTotalGroups) * 100
+        )
+      : 0;
 
-      <Card className="bg-white/80 dark:bg-slate-900/60">
-        <CardHeader className="pb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle className="text-[13px]">
-              Pencarian, Aksi, &amp; Export
-            </CardTitle>
-            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-              Filter data, hapus, atau export riwayat realisasi ke Excel/PDF.
+  const currentKebunLabel =
+    exportCurrentKebun != null
+      ? `${KEBUN_LABEL[exportCurrentKebun] ?? exportCurrentKebun} (${exportCurrentKebun})`
+      : "-";
+
+  return (
+    <>
+      {/* OVERLAY EXPORT FULL-SCREEN */}
+      {exporting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-xl px-4 py-3 w-[320px] space-y-3 border border-emerald-200 dark:border-emerald-700">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block h-4 w-4 animate-spin rounded-full border border-emerald-600 border-t-transparent"
+                aria-label="loading"
+              />
+              <span className="text-[12px] font-medium text-emerald-800 dark:text-emerald-200">
+                {exportMessage || "Sedang memproses export…"}
+              </span>
+            </div>
+
+            {exportTotalGroups > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-[11px] text-slate-600 dark:text-slate-300">
+                  Kebun saat ini:
+                  <br />
+                  <span className="font-medium">{currentKebunLabel}</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 dark:bg-emerald-400 transition-all"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400">
+                  <span>
+                    {exportProcessedGroups}/{exportTotalGroups} kebun
+                  </span>
+                  <span>{Math.round(progressPercent)}%</span>
+                </div>
+              </div>
+            )}
+
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">
+              Mohon tidak menutup halaman hingga proses export selesai.
             </p>
           </div>
+        </div>
+      )}
 
-          <div className="flex flex-wrap gap-2 justify-end">
-            <div className="flex flex-wrap gap-1">
-              <button
-                type="button"
-                onClick={handleExportExcelAll}
-                disabled={loading || total === 0}
-                className="px-3 py-1.5 rounded border border-emerald-300 text-[11px] text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
-              >
-                Export Excel (Semua Kebun)
-              </button>
-              <button
-                type="button"
-                onClick={handleExportExcelByKebun}
-                disabled={loading || !selectedKebun}
-                className="px-3 py-1.5 rounded border border-emerald-300 text-[11px] text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
-              >
-                Export Excel (Per Kebun)
-              </button>
+      <section className="space-y-2">
+        <SectionHeader
+          title="Riwayat Realisasi"
+          desc="Daftar input realisasi terbaru dari database"
+        />
+
+        <Card className="bg-white/80 dark:bg-slate-900/60">
+          <CardHeader className="pb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-[13px]">
+                Pencarian, Aksi, &amp; Export
+              </CardTitle>
+              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                Filter data, hapus, atau export riwayat realisasi ke Excel/PDF.
+              </p>
             </div>
 
-            <div className="flex flex-wrap gap-1">
-              <button
-                type="button"
-                onClick={handleExportPdfAll}
-                disabled={loading || total === 0}
-                className="px-3 py-1.5 rounded border border-sky-300 text-[11px] text-sky-800 hover:bg-sky-50 disabled:opacity-50"
-              >
-                Export PDF (Semua Kebun)
-              </button>
-              <button
-                type="button"
-                onClick={handleExportPdfByKebun}
-                disabled={loading || !selectedKebun}
-                className="px-3 py-1.5 rounded border border-sky-300 text-[11px] text-sky-800 hover:bg-sky-50 disabled:opacity-50"
-              >
-                Export PDF (Per Kebun)
-              </button>
-            </div>
+            <div className="flex flex-wrap gap-2 justify-end">
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={handleExportExcelAll}
+                  disabled={loading || total === 0 || exporting}
+                  className="px-3 py-1.5 rounded border border-emerald-300 text-[11px] text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+                >
+                  Export Excel (Semua Kebun)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportExcelByKebun}
+                  disabled={loading || !selectedKebun || exporting}
+                  className="px-3 py-1.5 rounded border border-emerald-300 text-[11px] text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+                >
+                  Export Excel (Per Kebun)
+                </button>
+              </div>
 
-            <button
-              type="button"
-              onClick={handleDeleteAll}
-              disabled={total === 0 || loading}
-              className="px-3 py-1.5 rounded border border-red-300 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
-            >
-              Hapus Semua Data
-            </button>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <div className="flex-1">
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Cari kategori (TM/TBM/BIBITAN) / kebun / AFD / blok / jenis pupuk / tanggal…"
-                className="h-9"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2 items-center">
-              <select
-                value={selectedKebun}
-                onChange={(e) => setSelectedKebun(e.target.value)}
-                className="h-9 px-2 text-[11px] border border-slate-300 rounded bg-white dark:bg-slate-900"
-              >
-                <option value="">Filter / Pilih kebun…</option>
-                {kebunOptions.map((o) => (
-                  <option key={o.code} value={o.code}>
-                    {o.name} ({o.code})
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={handleExportPdfAll}
+                  disabled={loading || total === 0 || exporting}
+                  className="px-3 py-1.5 rounded border border-sky-300 text-[11px] text-sky-800 hover:bg-sky-50 disabled:opacity-50"
+                >
+                  Export PDF (Semua Kebun)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportPdfByKebun}
+                  disabled={loading || !selectedKebun || exporting}
+                  className="px-3 py-1.5 rounded border border-sky-300 text-[11px] text-sky-800 hover:bg-sky-50 disabled:opacity-50"
+                >
+                  Export PDF (Per Kebun)
+                </button>
+              </div>
 
               <button
                 type="button"
-                onClick={handleDeleteByKebun}
-                disabled={!selectedKebun || loading}
+                onClick={handleDeleteAll}
+                disabled={total === 0 || loading || exporting}
                 className="px-3 py-1.5 rounded border border-red-300 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
               >
-                Hapus Data per Kebun
+                Hapus Semua Data
               </button>
             </div>
-          </div>
+          </CardHeader>
 
-          {/* Tabel + virtual scroll (per halaman) */}
-          <div
-            ref={scrollParentRef}
-            className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-md max-h-[520px]"
-          >
-            <table className="min-w-full text-xs">
-              <thead className="bg-slate-100 dark:bg-slate-800/40 sticky top-0 z-10">
-                <tr>
-                  <th className="px-3 py-2 text-left">Tanggal</th>
-                  <th className="px-3 py-2 text-left">Kategori</th>
-                  <th className="px-3 py-2 text-left">Kebun</th>
-                  <th className="px-3 py-2 text-left">Kode Kebun</th>
-                  <th className="px-3 py-2 text-left">AFD</th>
-                  <th className="px-3 py-2 text-left">TT</th>
-                  <th className="px-3 py-2 text-left">Blok</th>
-                  <th className="px-3 py-2 text-right">Luas (Ha)</th>
-                  <th className="px-3 py-2 text-right">INV</th>
-                  <th className="px-3 py-2 text-left">Jenis Pupuk</th>
-                  <th className="px-3 py-2 text-right">Aplikasi</th>
-                  <th className="px-3 py-2 text-right">Dosis (Kg/pokok)</th>
-                  <th className="px-3 py-2 text-right">Kg Pupuk</th>
-                  <th className="px-3 py-2 text-center">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paddingTop > 0 && (
+          <CardContent className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+              <div className="flex-1">
+                <Input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Cari kategori (TM/TBM/BIBITAN) / kebun / AFD / blok / jenis pupuk / tanggal…"
+                  className="h-9"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2 items-center">
+                <select
+                  value={selectedKebun}
+                  onChange={(e) => setSelectedKebun(e.target.value)}
+                  disabled={exporting}
+                  className="h-9 px-2 text-[11px] border border-slate-300 rounded bg-white dark:bg-slate-900"
+                >
+                  <option value="">Filter / Pilih kebun…</option>
+                  {kebunOptions.map((o) => (
+                    <option key={o.code} value={o.code}>
+                      {o.name} ({o.code})
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteByKebun}
+                  disabled={!selectedKebun || loading || exporting}
+                  className="px-3 py-1.5 rounded border border-red-300 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  Hapus Data per Kebun
+                </button>
+              </div>
+            </div>
+
+            {/* Tabel + virtual scroll (per halaman) */}
+            <div
+              ref={scrollParentRef}
+              className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-md max-h-[520px]"
+            >
+              <table className="min-w-full text-xs">
+                <thead className="bg-slate-100 dark:bg-slate-800/40 sticky top-0 z-10">
                   <tr>
-                    <td colSpan={14} style={{ height: paddingTop }} />
+                    <th className="px-3 py-2 text-left">Tanggal</th>
+                    <th className="px-3 py-2 text-left">Kategori</th>
+                    <th className="px-3 py-2 text-left">Kebun</th>
+                    <th className="px-3 py-2 text-left">Kode Kebun</th>
+                    <th className="px-3 py-2 text-left">AFD</th>
+                    <th className="px-3 py-2 text-left">TT</th>
+                    <th className="px-3 py-2 text-left">Blok</th>
+                    <th className="px-3 py-2 text-right">Luas (Ha)</th>
+                    <th className="px-3 py-2 text-right">INV</th>
+                    <th className="px-3 py-2 text-left">Jenis Pupuk</th>
+                    <th className="px-3 py-2 text-right">Aplikasi</th>
+                    <th className="px-3 py-2 text-right">Dosis (Kg/pokok)</th>
+                    <th className="px-3 py-2 text-right">Kg Pupuk</th>
+                    <th className="px-3 py-2 text-center">Aksi</th>
                   </tr>
-                )}
+                </thead>
+                <tbody>
+                  {paddingTop > 0 && (
+                    <tr>
+                      <td colSpan={14} style={{ height: paddingTop }} />
+                    </tr>
+                  )}
 
-                {virtualItems.map((virtualRow) => {
-                  const r = pageRows[virtualRow.index];
-                  if (!r) return null;
+                  {virtualItems.map((virtualRow) => {
+                    const r = pageRows[virtualRow.index];
+                    if (!r) return null;
 
-                  return (
-                    <tr
-                      key={`${r.id}-${virtualRow.index}`}
-                      className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
-                    >
-                      <td className="px-3 py-2">{r.tanggal}</td>
-                      <td className="px-3 py-2">{r.kategori}</td>
-                      <td className="px-3 py-2">
-                        {KEBUN_LABEL[r.kebun] ?? r.kebun}
-                      </td>
-                      <td className="px-3 py-2">{r.kodeKebun || "-"}</td>
-                      <td className="px-3 py-2">{r.afd}</td>
-                      <td className="px-3 py-2">{r.tt || "-"}</td>
-                      <td className="px-3 py-2">{r.blok}</td>
-                      <td className="px-3 py-2 text-right">
-                        {fmtNum(r.luas)}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {fmtNum(r.inv)}
-                      </td>
-                      <td className="px-3 py-2">{r.jenisPupuk}</td>
-                      <td className="px-3 py-2 text-right">
-                        {fmtNum(r.aplikasi)}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {fmtNum(r.dosis)}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {fmtNum(r.kgPupuk)}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <div className="inline-flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(r)}
-                            className="px-2 py-1 rounded border border-slate-300 text-[11px] hover:bg-slate-100 dark:hover:bg-slate-800"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(r)}
-                            className="px-2 py-1 rounded border border-red-300 text-[11px] text-red-700 hover:bg-red-50"
-                          >
-                            Hapus
-                          </button>
-                        </div>
+                    return (
+                      <tr
+                        key={`${r.id}-${virtualRow.index}`}
+                        className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                      >
+                        <td className="px-3 py-2">{r.tanggal}</td>
+                        <td className="px-3 py-2">{r.kategori}</td>
+                        <td className="px-3 py-2">
+                          {KEBUN_LABEL[r.kebun] ?? r.kebun}
+                        </td>
+                        <td className="px-3 py-2">{r.kodeKebun || "-"}</td>
+                        <td className="px-3 py-2">{r.afd}</td>
+                        <td className="px-3 py-2">{r.tt || "-"}</td>
+                        <td className="px-3 py-2">{r.blok}</td>
+                        <td className="px-3 py-2 text-right">
+                          {fmtNum(r.luas)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {fmtNum(r.inv)}
+                        </td>
+                        <td className="px-3 py-2">{r.jenisPupuk}</td>
+                        <td className="px-3 py-2 text-right">
+                          {fmtNum(r.aplikasi)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {fmtNum(r.dosis)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {fmtNum(r.kgPupuk)}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <div className="inline-flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(r)}
+                              className="px-2 py-1 rounded border border-slate-300 text-[11px] hover:bg-slate-100 dark:hover:bg-slate-800"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(r)}
+                              className="px-2 py-1 rounded border border-red-300 text-[11px] text-red-700 hover:bg-red-50"
+                            >
+                              Hapus
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {paddingBottom > 0 && (
+                    <tr>
+                      <td colSpan={14} style={{ height: paddingBottom }} />
+                    </tr>
+                  )}
+
+                  {!loading && filtered.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={14}
+                        className="px-3 py-6 text-center text-slate-500"
+                      >
+                        Tidak ada data.
                       </td>
                     </tr>
-                  );
-                })}
-
-                {paddingBottom > 0 && (
-                  <tr>
-                    <td colSpan={14} style={{ height: paddingBottom }} />
-                  </tr>
-                )}
-
-                {!loading && filtered.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={14}
-                      className="px-3 py-6 text-center text-slate-500"
-                    >
-                      Tidak ada data.
-                    </td>
-                  </tr>
-                )}
-
-                {loading && (
-                  <tr>
-                    <td
-                      colSpan={14}
-                      className="px-3 py-6 text-center text-slate-500"
-                    >
-                      Memuat data…
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Info ringkas + pagination */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-600 dark:text-slate-300">
-            <span>
-              {filtered.length === 0 ? (
-                <>Menampilkan 0 data dari total {total} data</>
-              ) : (
-                <>
-                  Menampilkan {showingFrom}–{showingTo} dari{" "}
-                  {filtered.length} data tersaring (dari total {total} data
-                  {selectedKebun && (
-                    <> &nbsp; | filter kebun: {selectedKebun}</>
                   )}
-                  )
-                </>
-              )}
-            </span>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1 || filtered.length === 0}
-                className="px-2 py-1 rounded border border-slate-300 text-[11px] disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                Sebelumnya
-              </button>
-              <span className="text-[11px]">
-                Halaman {filtered.length === 0 ? 0 : currentPage} dari{" "}
-                {filtered.length === 0 ? 0 : totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() =>
-                  setPage((p) => Math.min(totalPages, p + 1))
-                }
-                disabled={
-                  currentPage === totalPages || filtered.length === 0
-                }
-                className="px-2 py-1 rounded border border-slate-300 text-[11px] disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                Berikutnya
-              </button>
+                  {loading && (
+                    <tr>
+                      <td
+                        colSpan={14}
+                        className="px-3 py-6 text-center text-slate-500"
+                      >
+                        Memuat data…
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-    </section>
+
+            {/* Info ringkas + pagination */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-600 dark:text-slate-300">
+              <span>
+                {filtered.length === 0 ? (
+                  <>Menampilkan 0 data dari total {total} data</>
+                ) : (
+                  <>
+                    Menampilkan {showingFrom}–{showingTo} dari{" "}
+                    {filtered.length} data tersaring (dari total {total} data
+                    {selectedKebun && (
+                      <> &nbsp; | filter kebun: {selectedKebun}</>
+                    )}
+                    )
+                  </>
+                )}
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1 || filtered.length === 0}
+                  className="px-2 py-1 rounded border border-slate-300 text-[11px] disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Sebelumnya
+                </button>
+                <span className="text-[11px]">
+                  Halaman {filtered.length === 0 ? 0 : currentPage} dari{" "}
+                  {filtered.length === 0 ? 0 : totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={
+                    currentPage === totalPages || filtered.length === 0
+                  }
+                  className="px-2 py-1 rounded border border-slate-300 text-[11px] disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Berikutnya
+                </button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+    </>
   );
 }

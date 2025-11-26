@@ -40,6 +40,10 @@ function Frame({ children }: { children: React.ReactNode }) {
     setBlok,
     jenis,
     setJenis,
+    aplikasi,
+    setAplikasi,
+    dataYear,
+    setDataYear,
     dateFrom,
     setDateFrom,
     dateTo,
@@ -53,6 +57,12 @@ function Frame({ children }: { children: React.ReactNode }) {
     ttOptions,
     blokOptions,
     jenisOptions,
+    aplikasiOptions,
+    dataYearOptions,
+
+    // ✅ status loading meta
+    metaLoading,
+
     resetFilter,
   } = usePemupukan();
 
@@ -129,6 +139,12 @@ function Frame({ children }: { children: React.ReactNode }) {
             {jenis !== "all" && (
               <Badge variant="secondary">Jenis: {jenis}</Badge>
             )}
+            {aplikasi !== "all" && (
+              <Badge variant="secondary">Aplikasi: {aplikasi}</Badge>
+            )}
+            {dataYear && (
+              <Badge variant="secondary">Tahun: {dataYear}</Badge>
+            )}
             {dateFrom && (
               <Badge variant="secondary">Dari: {dateFrom}</Badge>
             )}
@@ -143,6 +159,8 @@ function Frame({ children }: { children: React.ReactNode }) {
               tt === "all" &&
               blok === "all" &&
               jenis === "all" &&
+              aplikasi === "all" &&
+              !dataYear &&
               !dateFrom &&
               !dateTo && (
                 <span className="text-slate-400">
@@ -174,6 +192,12 @@ function Frame({ children }: { children: React.ReactNode }) {
         jenis={jenis}
         setJenis={setJenis}
         jenisOptions={jenisOptions}
+        aplikasi={aplikasi}
+        setAplikasi={setAplikasi}
+        aplikasiOptions={aplikasiOptions}
+        dataYear={dataYear}
+        setDataYear={setDataYear}
+        dataYearOptions={dataYearOptions}
         dateFrom={dateFrom}
         setDateFrom={setDateFrom}
         dateTo={dateTo}
@@ -185,6 +209,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         ttOptions={ttOptions}
         blokOptions={blokOptions}
         resetFilter={resetFilter}
+        metaLoading={metaLoading}   // ✅ kirim ke FilterPanel
       />
     </div>
   );

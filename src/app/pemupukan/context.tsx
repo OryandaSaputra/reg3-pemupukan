@@ -1,9 +1,11 @@
+// src/app/pemupukan/context.tsx
 "use client";
 
 import React, {
   createContext,
   useContext,
   useState,
+  useEffect,
 } from "react";
 import { FertRow } from "./types";
 import {
@@ -32,6 +34,13 @@ type Ctx = {
   setBlok: (v: string) => void;
   jenis: string;
   setJenis: (v: string) => void;
+  aplikasi: string;
+  setAplikasi: (v: string) => void;
+
+  // Tahun Data (opsional, "" = semua tahun)
+  dataYear: string;
+  setDataYear: (v: string) => void;
+
   dateFrom: string;
   setDateFrom: (v: string) => void;
   dateTo: string;
@@ -51,14 +60,16 @@ type Ctx = {
   filterOpen: boolean;
   setFilterOpen: (v: boolean) => void;
 
-  // options (semua dari data via derive)
+  // options
   jenisOptions: string[];
+  aplikasiOptions: string[];
   distrikOptions: string[];
   kebunOptions: string[];
   kategoriOptions: (Kategori | "all")[];
   afdOptions: string[];
   ttOptions: string[];
   blokOptions: string[];
+  dataYearOptions: string[]; // daftar tahun dari DB
 
   // derived
   filtered: FertRow[];
@@ -121,6 +132,9 @@ type Ctx = {
   };
   realWindow?: { start?: string; end?: string };
   realCutoffDate?: string;
+
+  // ✅ status loading untuk meta / opsi filter (digunakan FilterPanel)
+  metaLoading: boolean;
 };
 
 const PemupukanContext = createContext<Ctx | null>(null);
@@ -144,8 +158,31 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
   const [tt, setTt] = useState<string>("all");
   const [blok, setBlok] = useState<string>("all");
   const [jenis, setJenis] = useState<string>("all");
+  const [aplikasi, setAplikasi] = useState<string>("all");
+
+  // Tahun Data ("" artinya semua tahun)
+  const [dataYear, setDataYear] = useState<string>("");
+
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
+
+  // options dinamis dari API (berdasarkan distrik + kebun / global)
+  const [kategoriOptionsState, setKategoriOptionsState] = useState<
+    (Kategori | "all")[]
+  >(["all"]);
+  const [afdOptionsState, setAfdOptionsState] = useState<string[]>([]);
+  const [ttOptionsState, setTtOptionsState] = useState<string[]>([]);
+  const [blokOptionsState, setBlokOptionsState] = useState<string[]>([]);
+  const [jenisOptionsState, setJenisOptionsState] = useState<string[]>(["all"]);
+  const [aplikasiOptionsState, setAplikasiOptionsState] = useState<string[]>([
+    "all",
+  ]);
+  const [dataYearOptionsState, setDataYearOptionsState] = useState<string[]>(
+    []
+  );
+
+  // ✅ loading meta
+  const [metaLoading, setMetaLoading] = useState<boolean>(false);
 
   const derived = usePemupukanDerived(rows, {
     distrik,
@@ -155,9 +192,84 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
     tt,
     blok,
     jenis,
+    aplikasi,
     dateFrom,
     dateTo,
   });
+
+  // Ambil opsi kategori/afd/tt/blok/jenis/aplikasi/tahun dari API
+  // - Tanpa param → global (semua data)
+  // - Dengan distrik/kebun → opsi ter-filter
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function fetchMeta() {
+      try {
+        setMetaLoading(true);
+
+        const params = new URLSearchParams();
+
+        // kalau distrik/kebun != "all" → kirim sebagai filter
+        if (distrik && distrik !== "all") {
+          params.set("distrik", distrik);
+        }
+        if (kebun && kebun !== "all") {
+          params.set("kebun", kebun);
+        }
+
+        const qs = params.toString();
+        const res = await fetch(`/api/pemupukan/meta${qs ? `?${qs}` : ""}`, {
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          console.error("Gagal mengambil meta pemupukan:", await res.text());
+          return; // kalau error, jangan ubah opsi lama
+        }
+
+        const data: {
+          kategori: string[];
+          afd: string[];
+          tt: string[];
+          blok: string[];
+          jenis: string[];
+          aplikasi?: string[];
+          years: string[];
+        } = await res.json();
+
+        // kategori dari API → konversi ke union dengan "all" di depan
+        const kategoriList: (Kategori | "all")[] = [
+          "all",
+          ...data.kategori.filter(
+            (k): k is Kategori =>
+              k === "TM" || k === "TBM" || k === "BIBITAN"
+          ),
+        ];
+
+        setKategoriOptionsState(kategoriList);
+        setAfdOptionsState(data.afd);
+        setTtOptionsState(data.tt);
+        setBlokOptionsState(data.blok);
+        setJenisOptionsState(["all", ...data.jenis]);
+        setAplikasiOptionsState(["all", ...(data.aplikasi ?? [])]);
+        setDataYearOptionsState(data.years);
+      } catch (err) {
+        // kalau request dibatalkan (AbortController), abaikan error
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        console.error("Error fetch meta:", err);
+      } finally {
+        setMetaLoading(false);
+      }
+    }
+
+    fetchMeta();
+
+    return () => {
+      controller.abort();
+    };
+  }, [distrik, kebun]);
 
   const resetFilter = () => {
     setDistrik("all");
@@ -167,6 +279,8 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
     setTt("all");
     setBlok("all");
     setJenis("all");
+    setAplikasi("all");
+    setDataYear("");
     setDateFrom("");
     setDateTo("");
   };
@@ -190,6 +304,10 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
     setBlok,
     jenis,
     setJenis,
+    aplikasi,
+    setAplikasi,
+    dataYear,
+    setDataYear,
     dateFrom,
     setDateFrom,
     dateTo,
@@ -208,14 +326,17 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
     filterOpen,
     setFilterOpen,
 
-    // options (dari derive = data)
-    jenisOptions: derived.jenisOptions,
+    // options
     distrikOptions: derived.distrikOptions,
     kebunOptions: derived.kebunOptions,
-    kategoriOptions: derived.kategoriOptions,
-    afdOptions: derived.afdOptions,
-    ttOptions: derived.ttOptions,
-    blokOptions: derived.blokOptions,
+
+    jenisOptions: jenisOptionsState,
+    aplikasiOptions: aplikasiOptionsState,
+    kategoriOptions: kategoriOptionsState,
+    afdOptions: afdOptionsState,
+    ttOptions: ttOptionsState,
+    blokOptions: blokOptionsState,
+    dataYearOptions: dataYearOptionsState,
 
     // derived
     filtered: derived.filtered,
@@ -247,6 +368,9 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
     headerDates: derived.headerDates,
     realWindow: derived.realWindow,
     realCutoffDate: derived.realCutoffDate,
+
+    // ✅ kirim ke consumer (Frame + FilterPanel)
+    metaLoading,
   };
 
   return (

@@ -3,7 +3,7 @@
 import ChartCard from "../components/ChartCard";
 import SectionHeader from "../components/SectionHeader";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
-import { COLOR_PLAN, COLOR_REAL } from "../constants";
+import { COLOR_PLAN, COLOR_REAL, KEBUN_LABEL } from "../constants";
 import React, { useMemo } from "react";
 import type { RowInput } from "jspdf-autotable";
 
@@ -80,8 +80,8 @@ const KEBUN_ORDER = [
   "TPU",
   "LDA",
   "SBT",
-  "AMO1",
-  "AMO2",
+  "AMO-1",
+  "AMO-2",
   "TAN",
   "TER",
   "SKE",
@@ -199,25 +199,44 @@ function computeTotals(rows?: TmRow[] | null) {
 
 type Totals = ReturnType<typeof computeTotals> | null;
 
+// Normalisasi ID kebun:
+// - "AMO-1", "amo 1", "AMO1" -> "AMO1"
+// - "TAMORA" ataupun "TAM"   -> "TAM"
+function normalizeKebunId(kebun: string): string {
+  const raw = kebun.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+
+  if (raw === "TAMORA") return "TAM";
+  return raw;
+}
+
+
 /* ======================================================================= */
 /* ========================= ENSURE ALL KEBUN =========================== */
 /* ======================================================================= */
 
 function ensureAllKebun(rows: TmRow[], kebunList = KEBUN_ORDER): TmRow[] {
   const map = new Map<string, TmRow>();
-  rows.forEach((r) => map.set(r.kebun, r));
 
+  // Simpan baris dengan key yang sudah dinormalisasi
+  rows.forEach((r) => {
+    const key = normalizeKebunId(r.kebun);
+    map.set(key, r);
+  });
+
+  // Pastikan urutan & jumlah kebun sesuai KEBUN_ORDER
   return kebunList.map((kebun, idx) => {
-    const existing = map.get(kebun);
+    const key = normalizeKebunId(kebun);
+    const existing = map.get(key);
+
     if (existing) {
       return {
         ...existing,
-        kebun,
-        // nomor SELALU sesuai urutan tetap, abaikan no dari DB
-        no: idx + 1,
+        kebun,        // tampilkan label sesuai KEBUN_ORDER ("AMO1")
+        no: idx + 1,  // nomor sesuai urutan tetap
       };
     }
 
+    // default jika benar-benar tidak ada data untuk kebun tsb
     return {
       no: idx + 1,
       kebun,
@@ -239,6 +258,7 @@ function ensureAllKebun(rows: TmRow[], kebunList = KEBUN_ORDER): TmRow[] {
     };
   });
 }
+
 
 /* ======================================================================= */
 /* ============================ Pct styling ============================== */
@@ -263,9 +283,9 @@ const fmtPct = (n?: number | null) =>
   n == null
     ? "-"
     : n.toLocaleString("id-ID", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
 /* ======================================================================= */
 /* ====================== EXPORT PDF PEMUPUKAN =========================== */
@@ -275,9 +295,9 @@ type PdfCell =
   | string
   | number
   | {
-      content: string | number;
-      colSpan?: number;
-    };
+    content: string | number;
+    colSpan?: number;
+  };
 
 /** Helper: export tabel pemupukan ke PDF dari data
  *  ⚡ Sekarang lazy-load jspdf & jspdf-autotable supaya tidak masuk initial bundle.
@@ -335,9 +355,9 @@ async function exportPemupukanTablePdf(
     n == null
       ? "-"
       : n.toLocaleString("id-ID", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        });
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
 
   const labelRealisasi = meta.hasUserFilter
     ? `Realisasi Periode\n${meta.startLong} – ${meta.endLong}`
@@ -622,7 +642,7 @@ export default function Visualisasi({
                               }}
                               formatter={(value, name) => [
                                 (value as number).toLocaleString("id-ID") +
-                                  " Kg",
+                                " Kg",
                                 name,
                               ]}
                             />
@@ -802,7 +822,10 @@ export default function Visualisasi({
                       {idx + 1}
                     </td>
 
-                    <td className="border px-2 py-1 text-left">{r.kebun}</td>
+                    <td className="border px-2 py-1 text-left">
+                      {KEBUN_LABEL[r.kebun] ?? r.kebun}
+                    </td>
+
 
                     {/* APLIKASI I */}
                     <td className="border px-2 py-1 text-right">

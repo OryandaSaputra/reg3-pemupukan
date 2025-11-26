@@ -6,6 +6,9 @@ export type FertRow = {
   distrik: "DTM" | "DBR";
   kebun: string;
   tanggal?: string;
+  
+   // 👇 FIELD BARU
+  aplikasiKe?: number; 
 
   rencana_total: number;
   realisasi_total: number;

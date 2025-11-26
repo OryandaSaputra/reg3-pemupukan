@@ -2,9 +2,13 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth.config";
-import PemupukanClient from "./PemupukanClient";
+import PemupukanClient, { type SearchParams } from "./PemupukanClient";
 
-export default async function PemupukanPage() {
+export default async function PemupukanPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const session = await getServerSession(authOptions);
 
   if (!session) {
@@ -16,5 +20,5 @@ export default async function PemupukanPage() {
   //   redirect("/login");
   // }
 
-  return <PemupukanClient />;
+  return <PemupukanClient searchParams={searchParams} />;
 }

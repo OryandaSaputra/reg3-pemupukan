@@ -7,14 +7,14 @@ export const KEBUN_LABEL: Record<string, string> = {
   SGO: "Sei Garo",
   LDA: "Lubuk Dalam",
   SBT: "Sei Buatan",
-  AMO1: "Air Molek- I",
-  AMO2: "Air Molek- II",
+  "AMO-1": "Air Molek- I",
+  "AMO-2": "Air Molek- II",
   // DBR
   SKE: "Sei Kencana",
   TER: "Terantam",
   TAN: "Tandun",
   SLI: "Sei Lindai",
-  TAMORA: "Tamora",
+  TAM: "Tamora",
   SBL: "Sei Batulangkah",
   SBE: "Sei Berlian",
   SRO: "Sei Rokan",
@@ -23,8 +23,8 @@ export const KEBUN_LABEL: Record<string, string> = {
   STA: "Sei Tapung",
 };
 
-export const ORDER_DTM = ["TME", "TPU", "SPA", "SGH", "SGO", "LDA", "SBT", "AMO1", "AMO2"];
-export const ORDER_DBR = ["SKE", "TER", "TAN", "SLI", "TAMORA", "SBL", "SBE", "SRO", "SIN", "SSI", "STA"];
+export const ORDER_DTM = ["TME", "TPU", "SPA", "SGH", "SGO", "LDA", "SBT", "AMO-1", "AMO-2"];
+export const ORDER_DBR = ["SKE", "TER", "TAN", "SLI", "TAM", "SBL", "SBE", "SRO", "SIN", "SSI", "STA"];
 
 export const PTPN_GREEN_DARK = "#004D25";
 export const PTPN_GREEN = "#006B3F";

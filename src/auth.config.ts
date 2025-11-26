@@ -22,10 +22,9 @@ export const authOptions: NextAuthOptions = {
         ) {
           const user: User = {
             id: "admin-1",
-            // simpan username di name supaya mudah dipakai di UI
             name: username || "Administrator",
-            email: null, // tidak dipakai, boleh null
-            // role dikenali karena sudah di-augment di .d.ts kamu
+            email: null, // tidak dipakai
+            // role sudah di-augment di d.ts kamu
             role: "admin",
           };
           return user;
