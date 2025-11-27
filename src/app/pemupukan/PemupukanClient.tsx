@@ -112,8 +112,8 @@ function buildRencanaWhere(
       filters.distrik === "DTM"
         ? ORDER_DTM
         : filters.distrik === "DBR"
-        ? ORDER_DBR
-        : undefined;
+          ? ORDER_DBR
+          : undefined;
 
     if (allowed && allowed.length > 0) {
       where.kebun = { in: allowed };
@@ -183,8 +183,8 @@ function buildRealisasiWhere(
       filters.distrik === "DTM"
         ? ORDER_DTM
         : filters.distrik === "DBR"
-        ? ORDER_DBR
-        : undefined;
+          ? ORDER_DBR
+          : undefined;
 
     if (allowed && allowed.length > 0) {
       where.kebun = { in: allowed };
@@ -279,8 +279,16 @@ async function buildTmRowsFromDb(
     aplikasiKe: r.aplikasiKe ?? 0,
     kgPupuk: r.kgPupuk ?? 0,
     tanggal: r.tanggal,
-    ymd: r.tanggal ? fmtYmdJakarta(r.tanggal) : null,
+    ymd: r.tanggal
+      ? new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Jakarta",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date(r.tanggal.getTime() + 7 * 60 * 60 * 1000)) // force shift to WIB
+      : null,
   }));
+
 
   const kebunSet = new Set<string>();
   rencanaRows.forEach((r) => kebunSet.add(r.kebun));
@@ -352,11 +360,11 @@ async function buildTmRowsFromDb(
 
     const jumlah_realSd0710 = usePeriodForRealisasi
       ? sumKg(realisasiRows, kebun, 1, periodStartYmd, periodEndYmd) +
-        sumKg(realisasiRows, kebun, 2, periodStartYmd, periodEndYmd) +
-        sumKg(realisasiRows, kebun, 3, periodStartYmd, periodEndYmd)
+      sumKg(realisasiRows, kebun, 2, periodStartYmd, periodEndYmd) +
+      sumKg(realisasiRows, kebun, 3, periodStartYmd, periodEndYmd)
       : sumKg(realisasiRows, kebun, 1) +
-        sumKg(realisasiRows, kebun, 2) +
-        sumKg(realisasiRows, kebun, 3);
+      sumKg(realisasiRows, kebun, 2) +
+      sumKg(realisasiRows, kebun, 3);
 
     const jumlah_pct =
       jumlah_rencana2025 > 0
