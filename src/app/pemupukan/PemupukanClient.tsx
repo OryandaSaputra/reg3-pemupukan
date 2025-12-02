@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { KategoriTanaman } from "@prisma/client";
 import { ORDER_DTM, ORDER_DBR } from "./constants";
+import LogAktivitas from "@/app/pemupukan/sections/LogAktivitas";
+
 
 /** Visualisasi di-split ke chunk terpisah */
 const Visualisasi = dynamic(
@@ -766,6 +768,7 @@ export default async function PemupukanClient({
         realCutoffDate={realWindow.end}
         hasUserFilter={hasUserDateFilter}
       />
+      <LogAktivitas />
     </>
   );
 }

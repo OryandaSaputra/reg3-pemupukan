@@ -15,10 +15,5 @@ export default async function PemupukanPage({
     redirect("/login");
   }
 
-  // Kalau mau batasi hanya admin:
-  // if ((session.user as any).role !== "admin") {
-  //   redirect("/login");
-  // }
-
   return <PemupukanClient searchParams={searchParams} />;
 }
