@@ -7,7 +7,7 @@ import type { Prisma } from "@prisma/client";
 import { KategoriTanaman } from "@prisma/client";
 import { ORDER_DTM, ORDER_DBR } from "./constants";
 import LogAktivitas from "@/app/pemupukan/sections/LogAktivitas";
-
+import { unstable_cache } from "next/cache";
 
 /** Visualisasi di-split ke chunk terpisah */
 const Visualisasi = dynamic(
@@ -47,21 +47,21 @@ async function getRealisasiRange(): Promise<{ start: Date; end: Date }> {
 /* ===================[ Build TM/TBM rows dari DB ]=================== */
 
 // Helper format tanggal ke YYYY-MM-DD (WIB)
-const fmtYmdJakarta = (d: Date): string =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d); // "YYYY-MM-DD"
+// const fmtYmdJakarta = (d: Date): string =>
+//   new Intl.DateTimeFormat("en-CA", {
+//     timeZone: "Asia/Jakarta",
+//     year: "numeric",
+//     month: "2-digit",
+//     day: "2-digit",
+//   }).format(d); // "YYYY-MM-DD"
 
-type RowInput = {
-  kebun: string;
-  aplikasiKe: number;
-  kgPupuk: number;
-  tanggal: Date | null;
-  ymd: string | null; // tanggal dalam format YYYY-MM-DD (WIB)
-};
+// type RowInput = {
+//   kebun: string;
+//   aplikasiKe: number;
+//   kgPupuk: number;
+//   tanggal: Date | null;
+//   ymd: string | null; // tanggal dalam format YYYY-MM-DD (WIB)
+// };
 
 // ====== Helper filter umum untuk query Prisma ======
 type FilterOptions = {
@@ -221,6 +221,21 @@ function buildRealisasiWhere(
   return where;
 }
 
+// Helper: awal hari di zona waktu Jakarta
+function startOfDayJakarta(date: Date): Date {
+  const zoned = new Date(
+    date.toLocaleString("en-US", { timeZone: "Asia/Jakarta" })
+  );
+  zoned.setHours(0, 0, 0, 0);
+  return zoned;
+}
+
+function nextDay(date: Date): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + 1);
+  return d;
+}
+
 /**
  * buildTmRowsFromDb
  */
@@ -231,142 +246,173 @@ async function buildTmRowsFromDb(
   usePeriodForRealisasi: boolean,
   filters: FilterOptions
 ): Promise<TmRow[]> {
-  const { start, end } = period;
+  // Normalisasi hari ini & besok dalam WIB
+  const todayJakarta = startOfDayJakarta(today);
+  const tomorrowJakarta = nextDay(startOfDayJakarta(today));
 
-  // format periode ke "YYYY-MM-DD" (WIB)
-  const periodStartYmd = fmtYmdJakarta(start);
-  const periodEndYmd = fmtYmdJakarta(end);
+  // ====== WHERE dasar (tanpa tanggal) ======
+  const baseRencanaWhere = buildRencanaWhere(filters, kategori);
+  const baseRealisasiWhere = buildRealisasiWhere(filters, kategori);
 
-  // "hari ini" & "besok" juga dalam WIB
-  const todayYmd = fmtYmdJakarta(today);
-  const tomorrowDate = new Date(today);
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-  const tomorrowYmd = fmtYmdJakarta(tomorrowDate);
+  // ====== WHERE realisasi utama (bisa pakai period) ======
+  const realisasiMainWhere: Prisma.RealisasiPemupukanWhereInput = {
+    ...baseRealisasiWhere,
+  };
 
-  // where global (kebun / afd / tt / blok / jenis / aplikasi) + kategori TM/TBM
-  const whereRencana = buildRencanaWhere(filters, kategori);
-  const whereRealisasi = buildRealisasiWhere(filters, kategori);
+  if (usePeriodForRealisasi) {
+    // batasi realisasi oleh date range user
+    realisasiMainWhere.tanggal = {
+      gte: period.start,
+      lte: period.end,
+    };
+  }
 
-  const [rencana, realisasi] = await Promise.all([
-    prisma.rencanaPemupukan.findMany({
-      where: whereRencana,
-      select: {
-        kebun: true,
-        aplikasiKe: true,
-        kgPupuk: true,
-        tanggal: true,
+  // ====== Query agregasi di DB (bukan di JS) ======
+  const [
+    // rencana total per kebun x aplikasi
+    renPerKebunApp,
+    // rencana hari ini (semua aplikasi)
+    renToday,
+    // rencana besok (semua aplikasi)
+    renTomorrow,
+    // realisasi total per kebun x aplikasi (bisa dibatasi periode)
+    realPerKebunApp,
+    // realisasi hari ini (semua aplikasi)
+    realToday,
+  ] = await Promise.all([
+    prisma.rencanaPemupukan.groupBy({
+      by: ["kebun", "aplikasiKe"],
+      _sum: { kgPupuk: true },
+      where: baseRencanaWhere,
+    }),
+    prisma.rencanaPemupukan.groupBy({
+      by: ["kebun"],
+      _sum: { kgPupuk: true },
+      where: {
+        ...baseRencanaWhere,
+        tanggal: {
+          gte: todayJakarta,
+          lt: tomorrowJakarta,
+        },
       },
     }),
-    prisma.realisasiPemupukan.findMany({
-      where: whereRealisasi,
-      select: {
-        kebun: true,
-        aplikasiKe: true,
-        kgPupuk: true,
-        tanggal: true,
+    prisma.rencanaPemupukan.groupBy({
+      by: ["kebun"],
+      _sum: { kgPupuk: true },
+      where: {
+        ...baseRencanaWhere,
+        tanggal: {
+          gte: tomorrowJakarta,
+          lt: nextDay(tomorrowJakarta),
+        },
+      },
+    }),
+    prisma.realisasiPemupukan.groupBy({
+      by: ["kebun", "aplikasiKe"],
+      _sum: { kgPupuk: true },
+      where: realisasiMainWhere,
+    }),
+    prisma.realisasiPemupukan.groupBy({
+      by: ["kebun"],
+      _sum: { kgPupuk: true },
+      where: {
+        ...baseRealisasiWhere,
+        tanggal: {
+          gte: todayJakarta,
+          lt: tomorrowJakarta,
+        },
       },
     }),
   ]);
 
-  const rencanaRows: RowInput[] = rencana.map((r) => ({
-    kebun: r.kebun,
-    aplikasiKe: r.aplikasiKe ?? 0,
-    kgPupuk: r.kgPupuk ?? 0,
-    tanggal: r.tanggal,
-    ymd: r.tanggal ? fmtYmdJakarta(r.tanggal) : null,
-  }));
+  // ====== Bangun map untuk akses cepat di JS ======
+  type AppMap = { [app: number]: number };
 
-  const realisasiRows: RowInput[] = realisasi.map((r) => ({
-    kebun: r.kebun,
-    aplikasiKe: r.aplikasiKe ?? 0,
-    kgPupuk: r.kgPupuk ?? 0,
-    tanggal: r.tanggal,
-    ymd: r.tanggal
-      ? new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Jakarta",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date(r.tanggal.getTime() + 7 * 60 * 60 * 1000)) // force shift to WIB
-      : null,
-  }));
+  const renMap = new Map<string, AppMap>();
+  const realMap = new Map<string, AppMap>();
+  const renTodayMap = new Map<string, number>();
+  const renTomorrowMap = new Map<string, number>();
+  const realTodayMap = new Map<string, number>();
 
+  // rencana per kebun x aplikasi
+  for (const row of renPerKebunApp) {
+    const kebun = row.kebun;
+    const app = row.aplikasiKe ?? 0;
+    if (!app) continue; // kita hanya peduli aplikasi 1–3
 
+    const mapForKebun = renMap.get(kebun) ?? { 1: 0, 2: 0, 3: 0 };
+    if (app === 1 || app === 2 || app === 3) {
+      mapForKebun[app] += Number(row._sum?.kgPupuk ?? 0);
+    }
+    renMap.set(kebun, mapForKebun);
+  }
+
+  // realisasi per kebun x aplikasi
+  for (const row of realPerKebunApp) {
+    const kebun = row.kebun;
+    const app = row.aplikasiKe ?? 0;
+    if (!app) continue;
+
+    const mapForKebun = realMap.get(kebun) ?? { 1: 0, 2: 0, 3: 0 };
+    if (app === 1 || app === 2 || app === 3) {
+      mapForKebun[app] += Number(row._sum?.kgPupuk ?? 0);
+    }
+    realMap.set(kebun, mapForKebun);
+  }
+
+  // rencana hari ini per kebun
+  for (const row of renToday) {
+    renTodayMap.set(row.kebun, Number(row._sum?.kgPupuk ?? 0));
+  }
+
+  // rencana besok per kebun
+  for (const row of renTomorrow) {
+    renTomorrowMap.set(row.kebun, Number(row._sum?.kgPupuk ?? 0));
+  }
+
+  // realisasi hari ini per kebun
+  for (const row of realToday) {
+    realTodayMap.set(row.kebun, Number(row._sum?.kgPupuk ?? 0));
+  }
+
+  // ====== Kumpulan semua kebun yang muncul di salah satu agregat ======
   const kebunSet = new Set<string>();
-  rencanaRows.forEach((r) => kebunSet.add(r.kebun));
-  realisasiRows.forEach((r) => kebunSet.add(r.kebun));
+  for (const k of renMap.keys()) kebunSet.add(k);
+  for (const k of realMap.keys()) kebunSet.add(k);
+  for (const k of renTodayMap.keys()) kebunSet.add(k);
+  for (const k of renTomorrowMap.keys()) kebunSet.add(k);
+  for (const k of realTodayMap.keys()) kebunSet.add(k);
 
-  const sumKg = (
-    rows: RowInput[],
-    kebun: string,
-    aplikasi: number,
-    startYmd?: string,
-    endYmd?: string
-  ) => {
-    return rows.reduce((acc, r) => {
-      if (r.kebun !== kebun) return acc;
-      if (r.aplikasiKe !== aplikasi) return acc;
-
-      // Jika ada filter tanggal, baris tanpa tanggal di-skip
-      if ((startYmd || endYmd) && !r.ymd) return acc;
-
-      // Jika tidak ada filter tanggal → baris tanpa tanggal tetap dihitung
-      if (startYmd && r.ymd && r.ymd < startYmd) return acc;
-      if (endYmd && r.ymd && r.ymd > endYmd) return acc;
-
-      return acc + Number(r.kgPupuk || 0);
-    }, 0);
-  };
-
+  // ====== Bentuk TmRow (output final) ======
   const rows: TmRow[] = [];
+  let idx = 0;
 
-  [...kebunSet].forEach((kebun, idx) => {
-    // =================== RENCANA (selalu total, tidak pakai periode) ===================
-    const app1_rencana = sumKg(rencanaRows, kebun, 1);
-    const app2_rencana = sumKg(rencanaRows, kebun, 2);
-    const app3_rencana = sumKg(rencanaRows, kebun, 3);
+  for (const kebun of kebunSet) {
+    idx += 1;
 
-    // =================== REALISASI ===================
-    const app1_real = usePeriodForRealisasi
-      ? sumKg(realisasiRows, kebun, 1, periodStartYmd, periodEndYmd)
-      : sumKg(realisasiRows, kebun, 1);
+    const renApps = renMap.get(kebun) ?? { 1: 0, 2: 0, 3: 0 };
+    const realApps = realMap.get(kebun) ?? { 1: 0, 2: 0, 3: 0 };
 
-    const app2_real = usePeriodForRealisasi
-      ? sumKg(realisasiRows, kebun, 2, periodStartYmd, periodEndYmd)
-      : sumKg(realisasiRows, kebun, 2);
+    const app1_rencana = renApps[1] ?? 0;
+    const app2_rencana = renApps[2] ?? 0;
+    const app3_rencana = renApps[3] ?? 0;
 
-    const app3_real = usePeriodForRealisasi
-      ? sumKg(realisasiRows, kebun, 3, periodStartYmd, periodEndYmd)
-      : sumKg(realisasiRows, kebun, 3);
+    const app1_real = realApps[1] ?? 0;
+    const app2_real = realApps[2] ?? 0;
+    const app3_real = realApps[3] ?? 0;
 
     const app1_pct = app1_rencana > 0 ? (app1_real / app1_rencana) * 100 : 0;
     const app2_pct = app2_rencana > 0 ? (app2_real / app2_rencana) * 100 : 0;
     const app3_pct = app3_rencana > 0 ? (app3_real / app3_rencana) * 100 : 0;
 
-    const renc_sekarang =
-      sumKg(rencanaRows, kebun, 1, todayYmd, todayYmd) +
-      sumKg(rencanaRows, kebun, 2, todayYmd, todayYmd) +
-      sumKg(rencanaRows, kebun, 3, todayYmd, todayYmd);
+    const renc_sekarang = renTodayMap.get(kebun) ?? 0;
+    const real_sekarang = realTodayMap.get(kebun) ?? 0;
+    const renc_besok = renTomorrowMap.get(kebun) ?? 0;
 
-    const real_sekarang =
-      sumKg(realisasiRows, kebun, 1, todayYmd, todayYmd) +
-      sumKg(realisasiRows, kebun, 2, todayYmd, todayYmd) +
-      sumKg(realisasiRows, kebun, 3, todayYmd, todayYmd);
+    const jumlah_rencana2025 =
+      app1_rencana + app2_rencana + app3_rencana;
 
-    const renc_besok =
-      sumKg(rencanaRows, kebun, 1, tomorrowYmd, tomorrowYmd) +
-      sumKg(rencanaRows, kebun, 2, tomorrowYmd, tomorrowYmd) +
-      sumKg(rencanaRows, kebun, 3, tomorrowYmd, tomorrowYmd);
-
-    const jumlah_rencana2025 = app1_rencana + app2_rencana + app3_rencana;
-
-    const jumlah_realSd0710 = usePeriodForRealisasi
-      ? sumKg(realisasiRows, kebun, 1, periodStartYmd, periodEndYmd) +
-      sumKg(realisasiRows, kebun, 2, periodStartYmd, periodEndYmd) +
-      sumKg(realisasiRows, kebun, 3, periodStartYmd, periodEndYmd)
-      : sumKg(realisasiRows, kebun, 1) +
-      sumKg(realisasiRows, kebun, 2) +
-      sumKg(realisasiRows, kebun, 3);
+    const jumlah_realSd0710 = app1_real + app2_real + app3_real;
 
     const jumlah_pct =
       jumlah_rencana2025 > 0
@@ -374,7 +420,7 @@ async function buildTmRowsFromDb(
         : 0;
 
     rows.push({
-      no: idx + 1,
+      no: idx,
       kebun,
       app1_rencana,
       app1_real,
@@ -392,7 +438,7 @@ async function buildTmRowsFromDb(
       jumlah_realSd0710,
       jumlah_pct,
     });
-  });
+  }
 
   return rows;
 }
@@ -580,18 +626,39 @@ async function getTotals(
   };
 }
 
-async function getAggPupuk(filters: FilterOptions) {
+async function getAggPupuk(
+  filters: FilterOptions,
+  period: { start: Date; end: Date },
+  usePeriodForRealisasi: boolean
+) {
   const whereRen = buildRencanaWhere(filters);
   const whereReal = buildRealisasiWhere(filters);
 
-  // Agg rencana per jenis
+  // Realisasi bisa dibatasi date range (kalau user pakai filter tanggal)
+  if (usePeriodForRealisasi) {
+    const dateFilter: Prisma.DateTimeNullableFilter = {
+      gte: period.start,
+      lte: period.end,
+    };
+
+    if (whereReal.tanggal && typeof whereReal.tanggal === "object") {
+      whereReal.tanggal = {
+        ...whereReal.tanggal,
+        ...dateFilter,
+      };
+    } else {
+      whereReal.tanggal = dateFilter;
+    }
+  }
+
+  // Agg rencana per jenis (tanpa batas tanggal, seperti sebelumnya)
   const ren = await prisma.rencanaPemupukan.groupBy({
     by: ["jenisPupuk"],
     _sum: { kgPupuk: true },
     where: whereRen,
   });
 
-  // Agg realisasi per jenis
+  // Agg realisasi per jenis (mungkin sudah dibatasi tanggal)
   const real = await prisma.realisasiPemupukan.groupBy({
     by: ["jenisPupuk"],
     _sum: { kgPupuk: true },
@@ -600,18 +667,20 @@ async function getAggPupuk(filters: FilterOptions) {
 
   const map = new Map<string, { rencana: number; realisasi: number }>();
 
-  ren.forEach((r) => {
+  // masukkan rencana
+  for (const r of ren) {
     map.set(r.jenisPupuk, {
       rencana: Number(r._sum?.kgPupuk ?? 0),
       realisasi: 0,
     });
-  });
+  }
 
-  real.forEach((r) => {
+  // masukkan realisasi
+  for (const r of real) {
     const prev = map.get(r.jenisPupuk) ?? { rencana: 0, realisasi: 0 };
     prev.realisasi = Number(r._sum?.kgPupuk ?? 0);
     map.set(r.jenisPupuk, prev);
-  });
+  }
 
   const rows = Array.from(map.entries())
     .map(([jenis, v]) => ({
@@ -630,6 +699,73 @@ async function getAggPupuk(filters: FilterOptions) {
     progress: r.rencana && r.rencana > 0 ? (r.realisasi / r.rencana) * 100 : 0,
   }));
 }
+
+/* ===================[ CACHED WRAPPERS (Next.js Data Cache) ]=================== */
+/**
+ * Wrapper caching untuk fungsi-fungsi DB di atas.
+ * Logika perhitungan tetap sama, hanya hasilnya disimpan sementara oleh Next.
+ */
+
+const getRealisasiRangeCached = unstable_cache(
+  async () => {
+    return getRealisasiRange();
+  },
+  ["pemupukan:getRealisasiRange"],
+  {
+    // misal: cache selama 5 menit
+    revalidate: 300,
+  }
+);
+
+const buildTmRowsFromDbCached = unstable_cache(
+  async (
+    kategori: KategoriTanaman,
+    today: Date,
+    period: { start: Date; end: Date },
+    usePeriodForRealisasi: boolean,
+    filters: FilterOptions
+  ) => {
+    return buildTmRowsFromDb(
+      kategori,
+      today,
+      period,
+      usePeriodForRealisasi,
+      filters
+    );
+  },
+  ["pemupukan:buildTmRowsFromDb"],
+  {
+    revalidate: 300,
+  }
+);
+
+const getTotalsCached = unstable_cache(
+  async (
+    filters: FilterOptions,
+    period: { start: Date; end: Date },
+    usePeriodForRealisasi: boolean
+  ) => {
+    return getTotals(filters, period, usePeriodForRealisasi);
+  },
+  ["pemupukan:getTotals"],
+  {
+    revalidate: 300,
+  }
+);
+
+const getAggPupukCached = unstable_cache(
+  async (
+    filters: FilterOptions,
+    period: { start: Date; end: Date },
+    usePeriodForRealisasi: boolean
+  ) => {
+    return getAggPupuk(filters, period, usePeriodForRealisasi);
+  },
+  ["pemupukan:getAggPupuk"],
+  {
+    revalidate: 300,
+  }
+);
 
 /* ===================[ PAGE-LEVEL CLIENT (dipanggil dari page.tsx) ]=================== */
 
@@ -657,7 +793,8 @@ export default async function PemupukanClient({
   const today0 = new Date(today);
   today0.setHours(0, 0, 0, 0);
 
-  const realRange = await getRealisasiRange();
+  // gunakan versi cached
+  const realRange = await getRealisasiRangeCached();
 
   let periodStart = new Date(realRange.start);
   let periodEnd = new Date(realRange.end);
@@ -703,23 +840,23 @@ export default async function PemupukanClient({
   const effectivePeriod = { start: periodStart, end: periodEnd };
 
   const [tmRows, tbmRows, totals, aggPupuk] = await Promise.all([
-    buildTmRowsFromDb(
+    buildTmRowsFromDbCached(
       KategoriTanaman.TM,
       today0,
       effectivePeriod,
       hasUserFilter,
       filters
     ),
-    buildTmRowsFromDb(
+    buildTmRowsFromDbCached(
       KategoriTanaman.TBM,
       today0,
       effectivePeriod,
       hasUserFilter,
       filters
     ),
-    // >>>> PEMANGGILAN BARU: pass period & hasUserFilter
-    getTotals(filters, effectivePeriod, hasUserFilter),
-    getAggPupuk(filters),
+    // >>>> PEMANGGILAN BARU: pakai versi cached
+    getTotalsCached(filters, effectivePeriod, hasUserFilter),
+    getAggPupukCached(filters, effectivePeriod, hasUserFilter),
   ]);
 
   const tmTbmRows: TmRow[] = [...tmRows, ...tbmRows];
@@ -730,15 +867,20 @@ export default async function PemupukanClient({
     today: todayISO,
   };
 
+  const getISOString = (value: string | Date) => {
+    if (typeof value === "string") return value.slice(0, 10); // "YYYY-MM-DD"
+    return value.toISOString().slice(0, 10);
+  };
+
   const labelStartISO =
     hasUserFilter && searchParams?.dateFrom
       ? searchParams.dateFrom
-      : realRange.start.toISOString().slice(0, 10);
+      : getISOString(realRange.start);
 
   const labelEndISO =
     hasUserFilter && searchParams?.dateTo
       ? searchParams.dateTo
-      : realRange.end.toISOString().slice(0, 10);
+      : getISOString(realRange.end);
 
   const realWindow = {
     start: labelStartISO,

@@ -139,6 +139,60 @@ type Ctx = {
 
 const PemupukanContext = createContext<Ctx | null>(null);
 
+/* ========================= META CLIENT CACHE ========================= */
+
+type MetaResponse = {
+  kategori: string[];
+  afd: string[];
+  tt: string[];
+  blok: string[];
+  jenis: string[];
+  aplikasi?: string[];
+  years: string[];
+};
+
+type MetaCacheEntry = {
+  data: MetaResponse;
+  ts: number;
+};
+
+const META_CACHE_TTL = 60_000; // 60 detik
+const metaCache = new Map<string, MetaCacheEntry>();
+
+function buildMetaKey(distrik: string, kebun: string) {
+  const d = distrik && distrik !== "" ? distrik : "all";
+  const k = kebun && kebun !== "" ? kebun : "all";
+  return `${d}|${k}`;
+}
+
+function applyMetaToState(
+  data: MetaResponse,
+  setKategoriOptionsState: React.Dispatch<React.SetStateAction<(Kategori | "all")[]>>,
+  setAfdOptionsState: React.Dispatch<React.SetStateAction<string[]>>,
+  setTtOptionsState: React.Dispatch<React.SetStateAction<string[]>>,
+  setBlokOptionsState: React.Dispatch<React.SetStateAction<string[]>>,
+  setJenisOptionsState: React.Dispatch<React.SetStateAction<string[]>>,
+  setAplikasiOptionsState: React.Dispatch<React.SetStateAction<string[]>>,
+  setDataYearOptionsState: React.Dispatch<React.SetStateAction<string[]>>
+) {
+  const kategoriList: (Kategori | "all")[] = [
+    "all",
+    ...data.kategori.filter(
+      (k): k is Kategori => k === "TM" || k === "TBM" || k === "BIBITAN"
+    ),
+  ];
+
+  setKategoriOptionsState(kategoriList);
+  setAfdOptionsState(data.afd);
+  setTtOptionsState(data.tt);
+  setBlokOptionsState(data.blok);
+  setJenisOptionsState(["all", ...data.jenis]);
+  setAplikasiOptionsState(["all", ...(data.aplikasi ?? [])]);
+  setDataYearOptionsState(data.years);
+}
+
+/* ========================= PROVIDER ========================= */
+
 export function PemupukanProvider({ children }: { children: React.ReactNode }) {
   const [rows] = useState<FertRow[]>([]);
   const [loading] = useState(true);
@@ -202,11 +256,31 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
   // - Dengan distrik/kebun → opsi ter-filter
   useEffect(() => {
     const controller = new AbortController();
+    const key = buildMetaKey(distrik, kebun);
 
     async function fetchMeta() {
       try {
         setMetaLoading(true);
 
+        const now = Date.now();
+
+        // 1) cek cache terlebih dahulu
+        const cached = metaCache.get(key);
+        if (cached && now - cached.ts < META_CACHE_TTL) {
+          applyMetaToState(
+            cached.data,
+            setKategoriOptionsState,
+            setAfdOptionsState,
+            setTtOptionsState,
+            setBlokOptionsState,
+            setJenisOptionsState,
+            setAplikasiOptionsState,
+            setDataYearOptionsState
+          );
+          return;
+        }
+
+        // 2) tidak ada/expired → fetch ke API
         const params = new URLSearchParams();
 
         // kalau distrik/kebun != "all" → kirim sebagai filter
@@ -227,34 +301,22 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
           return; // kalau error, jangan ubah opsi lama
         }
 
-        const data: {
-          kategori: string[];
-          afd: string[];
-          tt: string[];
-          blok: string[];
-          jenis: string[];
-          aplikasi?: string[];
-          years: string[];
-        } = await res.json();
+        const data: MetaResponse = await res.json();
 
-        // kategori dari API → konversi ke union dengan "all" di depan
-        const kategoriList: (Kategori | "all")[] = [
-          "all",
-          ...data.kategori.filter(
-            (k): k is Kategori =>
-              k === "TM" || k === "TBM" || k === "BIBITAN"
-          ),
-        ];
+        // simpan ke cache
+        metaCache.set(key, { data, ts: Date.now() });
 
-        setKategoriOptionsState(kategoriList);
-        setAfdOptionsState(data.afd);
-        setTtOptionsState(data.tt);
-        setBlokOptionsState(data.blok);
-        setJenisOptionsState(["all", ...data.jenis]);
-        setAplikasiOptionsState(["all", ...(data.aplikasi ?? [])]);
-        setDataYearOptionsState(data.years);
+        applyMetaToState(
+          data,
+          setKategoriOptionsState,
+          setAfdOptionsState,
+          setTtOptionsState,
+          setBlokOptionsState,
+          setJenisOptionsState,
+          setAplikasiOptionsState,
+          setDataYearOptionsState
+        );
       } catch (err) {
-        // kalau request dibatalkan (AbortController), abaikan error
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }

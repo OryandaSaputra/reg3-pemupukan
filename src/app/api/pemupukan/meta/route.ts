@@ -3,12 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { ORDER_DTM, ORDER_DBR } from "@/app/pemupukan/constants";
+import { unstable_cache } from "next/cache";
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const distrik = searchParams.get("distrik") ?? "all";
-  const kebun = searchParams.get("kebun") ?? "all";
-
+/**
+ * Implementasi asli penghitungan meta (dipindah dari GET),
+ * supaya bisa dibungkus caching tanpa mengubah logika.
+ */
+async function getMetaImpl(distrik: string, kebun: string) {
   const whereRen: Prisma.RencanaPemupukanWhereInput = {};
   const whereReal: Prisma.RealisasiPemupukanWhereInput = {};
 
@@ -156,13 +157,15 @@ export async function GET(req: NextRequest) {
   // ====== TAHUN DATA (dari kolom tanggal) ======
   const yearSet = new Set<number>();
   renTanggal.forEach((r) => r.tanggal && yearSet.add(r.tanggal.getFullYear()));
-  realTanggal.forEach((r) => r.tanggal && yearSet.add(r.tanggal.getFullYear()));
+  realTanggal.forEach(
+    (r) => r.tanggal && yearSet.add(r.tanggal.getFullYear())
+  );
 
   const years = Array.from(yearSet)
     .sort((a, b) => a - b)
     .map((y) => String(y));
 
-  return NextResponse.json({
+  return {
     kategori,
     afd,
     tt,
@@ -170,5 +173,37 @@ export async function GET(req: NextRequest) {
     jenis,
     aplikasi,
     years,
+  };
+}
+
+/**
+ * Versi cached:
+ * - keyed per (distrik, kebun)
+ * - ada tag "pemupukan:meta" supaya nanti bisa di-revalidate dari API lain
+ */
+const getMetaCached = unstable_cache(
+  async (distrik: string, kebun: string) => {
+    return getMetaImpl(distrik, kebun);
+  },
+  ["pemupukan:meta"],
+  {
+    revalidate: 300, // cache 5 menit (bisa diubah sesuai kebutuhan)
+    tags: ["pemupukan:meta"],
+  }
+);
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const distrik = searchParams.get("distrik") ?? "all";
+  const kebun = searchParams.get("kebun") ?? "all";
+
+  const meta = await getMetaCached(distrik, kebun);
+
+  return NextResponse.json(meta, {
+    headers: {
+      // HTTP caching tambahan (CDN / browser) – tidak mengubah isi response
+      "Cache-Control":
+        "public, max-age=300, s-maxage=300, stale-while-revalidate=600",
+    },
   });
 }

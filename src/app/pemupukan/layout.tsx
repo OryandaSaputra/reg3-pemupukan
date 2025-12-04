@@ -68,7 +68,7 @@ function Frame({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className="min-h-screen flex bg-[--ptpn-cream] dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+      className="min-h-screen flex gap-4 px-3 py-4 lg:px-6 lg:py-6 text-emerald-50 transition-colors duration-300"
       style={styleVars}
     >
       {/* Sidebar desktop */}
@@ -87,90 +87,149 @@ function Frame({ children }: { children: React.ReactNode }) {
         setFilterOpen={setFilterOpen}
       />
 
-      <div className="flex-1 min-w-0">
-        {/* Topbar */}
-        <header className="sticky top-0 z-40 bg-white/70 dark:bg-slate-900/70 backdrop-blur border-b border-slate-200 dark:border-slate-800">
-          <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                className="lg:hidden p-2 rounded-lg border border-slate-200 dark:border-slate-800"
-                onClick={() => setSidebarOpen(true)}
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-              <h1 className="text-base font-semibold tracking-tight">
-                Dashboard Pemupukan • Divisi Tanaman
-              </h1>
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Wrapper utama: kartu kaca besar untuk topbar + konten */}
+        <div className="flex-1 flex flex-col rounded-3xl border border-[--glass-border] bg-[--glass-bg] backdrop-blur-2xl ring-1 ring-white/10 shadow-[0_18px_45px_rgba(6,40,18,0.65)] overflow-hidden">
+          {/* Topbar */}
+          <header className="sticky top-0 z-40 border-b border-white/15 bg-[--glass-bg] backdrop-blur-2xl">
+            <div className="max-w-7xl mx-auto px-4 lg:px-6 py-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  className="lg:hidden p-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-md hover:bg-white/10 transition-colors"
+                  onClick={() => setSidebarOpen(true)}
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+                <h1 className="text-sm sm:text-base font-semibold tracking-tight text-emerald-50/95">
+                  Dashboard Pemupukan •{" "}
+                  <span className="text-emerald-200">Divisi Tanaman</span>
+                </h1>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="gap-2 h-8 px-3 rounded-full border-[--glass-border] bg-white/5 text-emerald-50 hover:bg-white/10 hover:text-emerald-50/90 backdrop-blur-md transition-colors"
+                  onClick={() => setFilterOpen(true)}
+                >
+                  <FilterIcon className="h-4 w-4" /> Filter
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                className="gap-2 h-8 px-3 border-[--ptpn-green] text-[--ptpn-green] hover:bg-[--ptpn-green]/10"
-                onClick={() => setFilterOpen(true)}
-              >
-                <FilterIcon className="h-4 w-4" /> Filter
-              </Button>
-            </div>
-          </div>
-        </header>
+          </header>
 
-        {/* Content */}
-        <main className="max-w-7xl mx-auto px-4 py-5 space-y-6">
-          {/* Chips filter aktif */}
-          <div className="flex flex-wrap gap-2 text-[11px]">
-            {distrik !== "all" && (
-              <Badge variant="secondary">Distrik: {distrik}</Badge>
-            )}
-            {kebun !== "all" && (
-              <Badge variant="secondary">
-                Kebun: {KEBUN_LABEL[kebun] ?? kebun}
-              </Badge>
-            )}
-            {kategori !== "all" && (
-              <Badge variant="secondary">Kategori: {kategori}</Badge>
-            )}
-            {afd !== "all" && (
-              <Badge variant="secondary">AFD: {afd}</Badge>
-            )}
-            {tt !== "all" && <Badge variant="secondary">TT: {tt}</Badge>}
-            {blok !== "all" && (
-              <Badge variant="secondary">Blok: {blok}</Badge>
-            )}
-            {jenis !== "all" && (
-              <Badge variant="secondary">Jenis: {jenis}</Badge>
-            )}
-            {aplikasi !== "all" && (
-              <Badge variant="secondary">Aplikasi: {aplikasi}</Badge>
-            )}
-            {dataYear && (
-              <Badge variant="secondary">Tahun: {dataYear}</Badge>
-            )}
-            {dateFrom && (
-              <Badge variant="secondary">Dari: {dateFrom}</Badge>
-            )}
-            {dateTo && (
-              <Badge variant="secondary">Sampai: {dateTo}</Badge>
-            )}
-
-            {distrik === "all" &&
-              kebun === "all" &&
-              kategori === "all" &&
-              afd === "all" &&
-              tt === "all" &&
-              blok === "all" &&
-              jenis === "all" &&
-              aplikasi === "all" &&
-              !dataYear &&
-              !dateFrom &&
-              !dateTo && (
-                <span className="text-slate-400">
-                  Tidak ada filter aktif
-                </span>
+          {/* Content */}
+          <main className="w-full max-w-6xl mx-auto px-4 lg:px-6 py-5 space-y-6">
+            {/* Chips filter aktif */}
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              {distrik !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="bg-white/7 border border-white/25 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1"
+                >
+                  Distrik: {distrik}
+                </Badge>
               )}
-          </div>
+              {kebun !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="bg-white/7 border border-white/25 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1"
+                >
+                  Kebun: {KEBUN_LABEL[kebun] ?? kebun}
+                </Badge>
+              )}
+              {kategori !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="bg-white/7 border border-white/25 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1"
+                >
+                  Kategori: {kategori}
+                </Badge>
+              )}
+              {afd !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="bg-white/7 border border-white/25 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1"
+                >
+                  AFD: {afd}
+                </Badge>
+              )}
+              {tt !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="bg-white/7 border border-white/25 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1"
+                >
+                  TT: {tt}
+                </Badge>
+              )}
+              {blok !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="bg-white/7 border border-white/25 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1"
+                >
+                  Blok: {blok}
+                </Badge>
+              )}
+              {jenis !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="bg-white/7 border border-white/25 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1"
+                >
+                  Jenis: {jenis}
+                </Badge>
+              )}
+              {aplikasi !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="bg-white/7 border border-white/25 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1"
+                >
+                  Aplikasi: {aplikasi}
+                </Badge>
+              )}
+              {dataYear && (
+                <Badge
+                  variant="secondary"
+                  className="bg-white/7 border border-white/25 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1"
+                >
+                  Tahun: {dataYear}
+                </Badge>
+              )}
+              {dateFrom && (
+                <Badge
+                  variant="secondary"
+                  className="bg-white/7 border border-white/25 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1"
+                >
+                  Dari: {dateFrom}
+                </Badge>
+              )}
+              {dateTo && (
+                <Badge
+                  variant="secondary"
+                  className="bg-white/7 border border-white/25 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1"
+                >
+                  Sampai: {dateTo}
+                </Badge>
+              )}
 
-          {children}
-        </main>
+              {distrik === "all" &&
+                kebun === "all" &&
+                kategori === "all" &&
+                afd === "all" &&
+                tt === "all" &&
+                blok === "all" &&
+                jenis === "all" &&
+                aplikasi === "all" &&
+                !dataYear &&
+                !dateFrom &&
+                !dateTo && (
+                  <span className="text-emerald-50/60">
+                    Tidak ada filter aktif
+                  </span>
+                )}
+            </div>
+
+            {children}
+          </main>
+        </div>
       </div>
 
       {/* Filter Panel */}
@@ -209,7 +268,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         ttOptions={ttOptions}
         blokOptions={blokOptions}
         resetFilter={resetFilter}
-        metaLoading={metaLoading}   // ✅ kirim ke FilterPanel
+        metaLoading={metaLoading} // ✅ kirim ke FilterPanel
       />
     </div>
   );

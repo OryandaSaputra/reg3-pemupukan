@@ -3,7 +3,7 @@
 import ChartCard from "../components/ChartCard";
 import SectionHeader from "../components/SectionHeader";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
-import { COLOR_PLAN, COLOR_REAL, KEBUN_LABEL } from "../constants";
+import { KEBUN_LABEL } from "../constants";
 import React, { useMemo } from "react";
 import type { RowInput } from "jspdf-autotable";
 
@@ -94,6 +94,10 @@ const KEBUN_ORDER = [
   "STA",
   "SBE",
 ];
+
+// Warna khusus untuk pie Rencana vs Realisasi (disesuaikan palet utama)
+const PIE_PLAN_COLOR = "#2E7D32"; // hijau daun (Rencana)
+const PIE_REAL_COLOR = "#FBC02D"; // kuning aksen (Realisasi)
 
 /* ======================================================================= */
 /* ====================== Helper tanggal Jakarta ========================= */
@@ -209,7 +213,6 @@ function normalizeKebunId(kebun: string): string {
   return raw;
 }
 
-
 /* ======================================================================= */
 /* ========================= ENSURE ALL KEBUN =========================== */
 /* ======================================================================= */
@@ -231,8 +234,8 @@ function ensureAllKebun(rows: TmRow[], kebunList = KEBUN_ORDER): TmRow[] {
     if (existing) {
       return {
         ...existing,
-        kebun,        // tampilkan label sesuai KEBUN_ORDER ("AMO1")
-        no: idx + 1,  // nomor sesuai urutan tetap
+        kebun, // tampilkan label sesuai KEBUN_ORDER ("AMO1")
+        no: idx + 1, // nomor sesuai urutan tetap
       };
     }
 
@@ -259,6 +262,32 @@ function ensureAllKebun(rows: TmRow[], kebunList = KEBUN_ORDER): TmRow[] {
   });
 }
 
+/* ======================================================================= */
+/* ====================== SIMPLE IN-MEMORY CACHES ======================== */
+/* ======================================================================= */
+
+// Cache hasil ensureAllKebun per referensi array rows
+const ensureAllKebunCache = new WeakMap<TmRow[], TmRow[]>();
+
+function ensureAllKebunCached(rows: TmRow[], kebunList = KEBUN_ORDER): TmRow[] {
+  const cached = ensureAllKebunCache.get(rows);
+  if (cached) return cached;
+  const result = ensureAllKebun(rows, kebunList);
+  ensureAllKebunCache.set(rows, result);
+  return result;
+}
+
+// Cache hasil computeTotals per referensi array rows ter-display
+const totalsCache = new WeakMap<TmRow[], Totals>();
+
+function computeTotalsCached(rows?: TmRow[] | null): Totals {
+  if (!rows || rows.length === 0) return null;
+  const cached = totalsCache.get(rows);
+  if (cached !== undefined) return cached;
+  const result = computeTotals(rows);
+  totalsCache.set(rows, result);
+  return result;
+}
 
 /* ======================================================================= */
 /* ============================ Pct styling ============================== */
@@ -268,8 +297,8 @@ const pctClass = (n?: number | null) => {
   if (n == null || Number.isNaN(n)) return "";
   const v = Math.round(n * 100) / 100;
   return v >= 100
-    ? "text-emerald-700 font-semibold"
-    : "text-red-600 font-semibold";
+    ? "text-emerald-300 font-semibold"
+    : "text-rose-400 font-semibold";
 };
 
 /* ======================================================================= */
@@ -556,15 +585,15 @@ export default function Visualisasi({
   /* =================================================================== */
 
   const tmDisplayRows = useMemo(
-    () => ensureAllKebun(tmRows),
+    () => ensureAllKebunCached(tmRows),
     [tmRows]
   );
   const tbmDisplayRows = useMemo(
-    () => ensureAllKebun(tbmRows),
+    () => ensureAllKebunCached(tbmRows),
     [tbmRows]
   );
   const tmTbmDisplayRows = useMemo(
-    () => ensureAllKebun(tmTbmRows),
+    () => ensureAllKebunCached(tmTbmRows),
     [tmTbmRows]
   );
 
@@ -573,15 +602,15 @@ export default function Visualisasi({
   /* =================================================================== */
 
   const totalsTM = useMemo(
-    () => computeTotals(tmDisplayRows),
+    () => computeTotalsCached(tmDisplayRows),
     [tmDisplayRows]
   );
   const totalsTBM = useMemo(
-    () => computeTotals(tbmDisplayRows),
+    () => computeTotalsCached(tbmDisplayRows),
     [tbmDisplayRows]
   );
   const totalsTmTbm = useMemo(
-    () => computeTotals(tmTbmDisplayRows),
+    () => computeTotalsCached(tmTbmDisplayRows),
     [tmTbmDisplayRows]
   );
 
@@ -598,14 +627,13 @@ export default function Visualisasi({
         <div className="col-span-12">
           <ChartCard title="Rencana vs Realisasi per Jenis Pupuk (Kg)">
             <div className="pb-4">
-              <p className="text-[11px] text-slate-500 mb-2">
+              <p className="text-[11px] text-emerald-100/75 mb-2">
                 Setiap pie chart merepresentasikan komposisi Rencana (Kg) vs
-                Realisasi (Kg) untuk satu jenis pupuk. Angka Ha ditampilkan di
-                bawah masing-masing chart.
+                Realisasi (Kg) untuk satu jenis pupuk.
               </p>
 
-              {/* 4 chart per baris */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-3 gap-y-1">
+              {/* 3 chart per baris */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-4 gap-y-3">
                 {aggPupuk.map((item) => {
                   const data = [
                     { name: "Rencana (Kg)", value: item.rencana || 0 },
@@ -615,30 +643,33 @@ export default function Visualisasi({
                   return (
                     <div
                       key={item.jenis}
-                      className="border border-slate-200 rounded-lg px-2 pt-2 pb-3 flex flex-col items-center bg-white"
+                      className="glass-surface rounded-2xl px-3 pt-3 pb-4 flex flex-col items-center border border-[--glass-border]"
                     >
-                      <div className="text-[10px] font-semibold mb-0.5 text-center">
+                      <div className="text-[11px] font-semibold mb-1 text-center text-emerald-50/95">
                         {item.jenis}
                       </div>
 
-                      <div className="w-full h-24">
+                      {/* Pie dibesarkan */}
+                      <div className="w-full h-32">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
                               data={data}
                               dataKey="value"
-                              innerRadius={16}
-                              outerRadius={24}
+                              innerRadius={24}
+                              outerRadius={40}
                               labelLine={false}
                               isAnimationActive={false}
                             >
-                              <Cell fill={COLOR_PLAN} />
-                              <Cell fill={COLOR_REAL} />
+                              <Cell fill={PIE_PLAN_COLOR} />
+                              <Cell fill={PIE_REAL_COLOR} />
                             </Pie>
                             <Tooltip
                               contentStyle={{
-                                backgroundColor: "#FFF",
-                                border: "1px solid #E5E7EB",
+                                backgroundColor: "#020617",
+                                border: "1px solid rgba(148,163,184,0.6)",
+                                borderRadius: 8,
+                                color: "#E5E7EB",
                               }}
                               formatter={(value, name) => [
                                 (value as number).toLocaleString("id-ID") +
@@ -650,15 +681,10 @@ export default function Visualisasi({
                         </ResponsiveContainer>
                       </div>
 
-                      <div className="mt-0.5 text-[9px] text-slate-600 text-center leading-tight space-y-[1px]">
-                        <div>
-                          Ren: {fmtNum(item.rencana)} Kg |{" "}
-                          {fmtNum(item.rencana_ha)} Ha
-                        </div>
-                        <div>
-                          Real: {fmtNum(item.realisasi)} Kg |{" "}
-                          {fmtNum(item.realisasi_ha)} Ha
-                        </div>
+                      {/* Keterangan tanpa Ha */}
+                      <div className="mt-1 text-[10px] text-emerald-100/80 text-center leading-tight space-y-[2px]">
+                        <div>Ren: {fmtNum(item.rencana)} Kg</div>
+                        <div>Real: {fmtNum(item.realisasi)} Kg</div>
                         <div>
                           Progress:{" "}
                           <span className={pctClass(item.progress)}>
@@ -679,9 +705,9 @@ export default function Visualisasi({
       {/* =========================== TABEL TM =============================== */}
       {/* =================================================================== */}
       <div className="space-y-4">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.8)] p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold">
+            <h3 className="text-sm font-semibold text-emerald-50/95">
               Tabel Rencana &amp; Realisasi Pemupukan TM
             </h3>
 
@@ -697,16 +723,16 @@ export default function Visualisasi({
                   hasUserFilter,
                 })
               }
-              className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+              className="inline-flex items-center gap-1 rounded-full border border-[--glass-border] px-3 py-1.5 text-[11px] font-medium text-emerald-50/90 bg-white/5 hover:bg-white/10 backdrop-blur-md"
             >
               Download PDF
             </button>
           </div>
 
-          <div className="overflow-auto rounded-lg border border-slate-300">
+          <div className="overflow-auto rounded-xl border border-white/15 bg-black/10">
             <table className="w-full text-xs border-collapse">
               <thead className="text-[11px]">
-                <tr className="bg-slate-200 text-slate-800">
+                <tr className="bg-emerald-950/60 text-emerald-50">
                   <th rowSpan={2} className="border px-2 py-2 text-center">
                     No.
                   </th>
@@ -751,7 +777,7 @@ export default function Visualisasi({
                   </th>
                 </tr>
 
-                <tr className="bg-slate-100 text-slate-700">
+                <tr className="bg-emerald-900/60 text-emerald-50/95">
                   <th className="border px-2 py-2 text-center">RENCANA</th>
                   <th className="border px-2 py-2 text-center">
                     {useRangeLabel ? (
@@ -816,22 +842,21 @@ export default function Visualisasi({
                 {tmDisplayRows.map((r, idx) => (
                   <tr
                     key={`tm-${r.kebun}-${idx}`}
-                    className={idx % 2 ? "bg-white" : "bg-slate-50"}
+                    className={idx % 2 ? "bg-white/5" : "bg-white/0"}
                   >
-                    <td className="border px-2 py-1 text-center">
+                    <td className="border px-2 py-1 text-center text-emerald-50/90">
                       {idx + 1}
                     </td>
 
-                    <td className="border px-2 py-1 text-left">
+                    <td className="border px-2 py-1 text-left text-emerald-50/90">
                       {KEBUN_LABEL[r.kebun] ?? r.kebun}
                     </td>
 
-
                     {/* APLIKASI I */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app1_rencana)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app1_real)}
                     </td>
                     <td
@@ -843,10 +868,10 @@ export default function Visualisasi({
                     </td>
 
                     {/* APLIKASI II */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app2_rencana)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app2_real)}
                     </td>
                     <td
@@ -858,10 +883,10 @@ export default function Visualisasi({
                     </td>
 
                     {/* APLIKASI III */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app3_rencana)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app3_real)}
                     </td>
                     <td
@@ -873,21 +898,21 @@ export default function Visualisasi({
                     </td>
 
                     {/* Harian */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.renc_sekarang)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.real_sekarang)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.renc_besok)}
                     </td>
 
                     {/* TOTAL */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.jumlah_rencana2025)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.jumlah_realSd0710)}
                     </td>
                     <td
@@ -904,7 +929,7 @@ export default function Visualisasi({
               {/* ======================== FOOTER TOTAL TM ======================== */}
               {totalsTM && tmDisplayRows.length > 0 && (
                 <tfoot>
-                  <tr className="bg-slate-200 font-semibold">
+                  <tr className="bg-emerald-900/70 font-semibold text-emerald-50">
                     <td
                       colSpan={2}
                       className="border px-2 py-2 text-center"
@@ -992,9 +1017,9 @@ export default function Visualisasi({
         {/* =================================================================== */}
         {/* =========================== TABEL TBM ============================= */}
         {/* =================================================================== */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.8)] p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold">
+            <h3 className="text-sm font-semibold text-emerald-50/95">
               Tabel Rencana &amp; Realisasi Pemupukan TBM
             </h3>
 
@@ -1010,16 +1035,16 @@ export default function Visualisasi({
                   hasUserFilter,
                 })
               }
-              className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+              className="inline-flex items-center gap-1 rounded-full border border-[--glass-border] px-3 py-1.5 text-[11px] font-medium text-emerald-50/90 bg-white/5 hover:bg-white/10 backdrop-blur-md"
             >
               Download PDF
             </button>
           </div>
 
-          <div className="overflow-auto rounded-lg border border-slate-300">
+          <div className="overflow-auto rounded-xl border border-white/15 bg-black/10">
             <table className="w-full text-xs border-collapse">
               <thead className="text-[11px]">
-                <tr className="bg-slate-200 text-slate-800">
+                <tr className="bg-emerald-950/60 text-emerald-50">
                   <th rowSpan={2} className="border px-2 py-2 text-center">
                     No.
                   </th>
@@ -1064,7 +1089,7 @@ export default function Visualisasi({
                   </th>
                 </tr>
 
-                <tr className="bg-slate-100 text-slate-700">
+                <tr className="bg-emerald-900/60 text-emerald-50/95">
                   <th className="border px-2 py-2 text-center">RENCANA</th>
                   <th className="border px-2 py-2 text-center">
                     {useRangeLabel ? (
@@ -1129,19 +1154,21 @@ export default function Visualisasi({
                 {tbmDisplayRows.map((r, idx) => (
                   <tr
                     key={`tbm-${r.kebun}-${idx}`}
-                    className={idx % 2 ? "bg-white" : "bg-slate-50"}
+                    className={idx % 2 ? "bg-white/5" : "bg-white/0"}
                   >
-                    <td className="border px-2 py-1 text-center">
+                    <td className="border px-2 py-1 text-center text-emerald-50/90">
                       {idx + 1}
                     </td>
 
-                    <td className="border px-2 py-1 text-left">{r.kebun}</td>
+                    <td className="border px-2 py-1 text-left text-emerald-50/90">
+                      {r.kebun}
+                    </td>
 
                     {/* APLIKASI I */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app1_rencana)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app1_real)}
                     </td>
                     <td
@@ -1153,10 +1180,10 @@ export default function Visualisasi({
                     </td>
 
                     {/* APLIKASI II */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app2_rencana)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app2_real)}
                     </td>
                     <td
@@ -1168,10 +1195,10 @@ export default function Visualisasi({
                     </td>
 
                     {/* APLIKASI III */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app3_rencana)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app3_real)}
                     </td>
                     <td
@@ -1183,21 +1210,21 @@ export default function Visualisasi({
                     </td>
 
                     {/* Harian */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.renc_sekarang)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.real_sekarang)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.renc_besok)}
                     </td>
 
                     {/* TOTAL */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.jumlah_rencana2025)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.jumlah_realSd0710)}
                     </td>
                     <td
@@ -1214,7 +1241,7 @@ export default function Visualisasi({
               {/* ======================== FOOTER TOTAL TBM ======================== */}
               {totalsTBM && tbmDisplayRows.length > 0 && (
                 <tfoot>
-                  <tr className="bg-slate-200 font-semibold">
+                  <tr className="bg-emerald-900/70 font-semibold text-emerald-50">
                     <td
                       colSpan={2}
                       className="border px-2 py-2 text-center"
@@ -1302,9 +1329,9 @@ export default function Visualisasi({
         {/* =================================================================== */}
         {/* ======================= TABEL TM & TBM ============================ */}
         {/* =================================================================== */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.8)] p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold">
+            <h3 className="text-sm font-semibold text-emerald-50/95">
               Tabel Rencana &amp; Realisasi Pemupukan TM &amp; TBM
             </h3>
 
@@ -1325,16 +1352,16 @@ export default function Visualisasi({
                   }
                 )
               }
-              className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+              className="inline-flex items-center gap-1 rounded-full border border-[--glass-border] px-3 py-1.5 text-[11px] font-medium text-emerald-50/90 bg-white/5 hover:bg-white/10 backdrop-blur-md"
             >
               Download PDF
             </button>
           </div>
 
-          <div className="overflow-auto rounded-lg border border-slate-300">
+          <div className="overflow-auto rounded-xl border border-white/15 bg-black/10">
             <table className="w-full text-xs border-collapse">
               <thead className="text-[11px]">
-                <tr className="bg-slate-200 text-slate-800">
+                <tr className="bg-emerald-950/60 text-emerald-50">
                   <th rowSpan={2} className="border px-2 py-2 text-center">
                     No.
                   </th>
@@ -1379,7 +1406,7 @@ export default function Visualisasi({
                   </th>
                 </tr>
 
-                <tr className="bg-slate-100 text-slate-700">
+                <tr className="bg-emerald-900/60 text-emerald-50/95">
                   <th className="border px-2 py-2 text-center">RENCANA</th>
                   <th className="border px-2 py-2 text-center">
                     {useRangeLabel ? (
@@ -1444,19 +1471,21 @@ export default function Visualisasi({
                 {tmTbmDisplayRows.map((r, idx) => (
                   <tr
                     key={`tmTbm-${r.kebun}-${idx}`}
-                    className={idx % 2 ? "bg-white" : "bg-slate-50"}
+                    className={idx % 2 ? "bg-white/5" : "bg-white/0"}
                   >
-                    <td className="border px-2 py-1 text-center">
+                    <td className="border px-2 py-1 text-center text-emerald-50/90">
                       {idx + 1}
                     </td>
 
-                    <td className="border px-2 py-1 text-left">{r.kebun}</td>
+                    <td className="border px-2 py-1 text-left text-emerald-50/90">
+                      {r.kebun}
+                    </td>
 
                     {/* APLIKASI I */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app1_rencana)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app1_real)}
                     </td>
                     <td
@@ -1468,10 +1497,10 @@ export default function Visualisasi({
                     </td>
 
                     {/* APLIKASI II */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app2_rencana)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app2_real)}
                     </td>
                     <td
@@ -1483,10 +1512,10 @@ export default function Visualisasi({
                     </td>
 
                     {/* APLIKASI III */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app3_rencana)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.app3_real)}
                     </td>
                     <td
@@ -1498,21 +1527,21 @@ export default function Visualisasi({
                     </td>
 
                     {/* Harian */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.renc_sekarang)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.real_sekarang)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.renc_besok)}
                     </td>
 
                     {/* Total */}
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.jumlah_rencana2025)}
                     </td>
-                    <td className="border px-2 py-1 text-right">
+                    <td className="border px-2 py-1 text-right text-emerald-50/90">
                       {fmtNum(r.jumlah_realSd0710)}
                     </td>
                     <td
@@ -1529,7 +1558,7 @@ export default function Visualisasi({
               {/* ======================== FOOTER TOTAL TM & TBM ======================== */}
               {totalsTmTbm && tmTbmDisplayRows.length > 0 && (
                 <tfoot>
-                  <tr className="bg-slate-200 font-semibold">
+                  <tr className="bg-emerald-900/70 font-semibold text-emerald-50">
                     <td
                       colSpan={2}
                       className="border px-2 py-2 text-center"

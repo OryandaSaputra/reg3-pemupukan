@@ -8,15 +8,28 @@ export default function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold text-slate-800">
+    <Card
+      className="
+        glass-surface rounded-2xl border border-[--glass-border]
+        shadow-[0_18px_45px_rgba(3,18,9,0.8)]
+        overflow-visible
+      "
+    >
+      <CardHeader
+        className="
+          pb-2 border-b border-white/10
+          flex items-center justify-between
+          overflow-visible
+        "
+      >
+        <CardTitle className="text-sm font-semibold text-emerald-50/95 tracking-tight">
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-0">
-        {/* ⬇️ JANGAN pakai h-64 / h-72. Pakai min-h atau biarkan auto */}
-        <div className="w-full min-h-[260px] overflow-visible">
+
+      <CardContent className="pt-3 overflow-visible">
+        {/* Tidak ada h-64 / min-h besar di sini */}
+        <div className="w-full overflow-visible">
           {children}
         </div>
       </CardContent>

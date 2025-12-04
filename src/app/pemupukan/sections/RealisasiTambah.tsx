@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef } from "react";
 import SectionHeader from "../components/SectionHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -107,6 +107,7 @@ function findAfter(
 }
 
 export default function RealisasiTambah() {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [form, setForm] = useState<FormData>({
@@ -684,45 +685,45 @@ export default function RealisasiTambah() {
   };
 
   return (
-    <section id="real-tambah" className="space-y-2 scroll-mt-24">
+    <section id="real-tambah" className="space-y-3 scroll-mt-24">
       <SectionHeader
         title="Realisasi Pemupukan - Tambah Data"
         desc="Isi data realisasi secara manual atau import dari Excel."
       />
 
-      <Card className="bg-white/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800">
+      <Card className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.85)]">
         <CardHeader className="pb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-[13px]">Formulir Realisasi</CardTitle>
+
           <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-2">
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-                onChange={handleImportExcel}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                disabled={importing}
-                asChild
-              >
-                <span>
-                  <Upload className="h-4 w-4" />
-                  {importing ? "Import..." : "Import dari Excel"}
-                </span>
-              </Button>
-            </label>
+            {/* input file disembunyikan, dipicu manual dari tombol */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={handleImportExcel}
+            />
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 border-emerald-600/70 text-emerald-50 hover:bg-emerald-900/70"
+              disabled={importing}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="h-4 w-4" />
+              {importing ? "Import..." : "Import dari Excel"}
+            </Button>
           </div>
         </CardHeader>
 
-        <CardContent className="pt-2">
+        <CardContent className="pt-3">
           <form className="space-y-6" onSubmit={handleSubmit}>
             {/* Kategori */}
             <div className="space-y-2">
-              <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+              <p className="text-[11px] font-medium text-emerald-100/80">
                 Kategori Tanaman
               </p>
               <div className="max-w-xs">
@@ -730,16 +731,12 @@ export default function RealisasiTambah() {
                   value={form.kategori}
                   onValueChange={(v) => onChange("kategori", v as Kategori)}
                 >
-                  <SelectTrigger className="h-9 w-full">
+                  <SelectTrigger className="h-9 w-full border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40">
                     <SelectValue placeholder="Pilih kategori (TM / TBM / BIBITAN)" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="TM">
-                      TM (Tanaman Menghasilkan)
-                    </SelectItem>
-                    <SelectItem value="TBM">
-                      TBM (Tanaman Belum Menghasilkan)
-                    </SelectItem>
+                  <SelectContent className="bg-slate-950 text-emerald-50 border border-emerald-700/70">
+                    <SelectItem value="TM">TM (Tanaman Menghasilkan)</SelectItem>
+                    <SelectItem value="TBM">TBM (Tanaman Belum Menghasilkan)</SelectItem>
                     <SelectItem value="BIBITAN">BIBITAN</SelectItem>
                   </SelectContent>
                 </Select>
@@ -748,22 +745,22 @@ export default function RealisasiTambah() {
 
             {/* Identitas Lokasi */}
             <div className="space-y-3">
-              <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+              <p className="text-[11px] font-medium text-emerald-100/80">
                 Identitas Lokasi
               </p>
               <div className="grid grid-cols-12 gap-3">
                 <div className="col-span-12 md:col-span-4">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Nama Kebun
                   </label>
                   <Select
                     value={form.kebun}
                     onValueChange={(v) => onChange("kebun", v)}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger className="h-10 w-full border-emerald-700/60 bg-slate-950/60 text-emerald-50">
                       <SelectValue placeholder="Pilih kebun" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-950 text-emerald-50 border border-emerald-700/70">
                       {kebunOptions.map((o) => (
                         <SelectItem key={o.code} value={o.code}>
                           {o.name} ({o.code})
@@ -773,7 +770,7 @@ export default function RealisasiTambah() {
                   </Select>
                 </div>
                 <div className="col-span-12 md:col-span-4">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Kode Kebun
                   </label>
                   <Input
@@ -782,33 +779,33 @@ export default function RealisasiTambah() {
                       onChange("kodeKebun", e.target.value.toUpperCase())
                     }
                     placeholder="mis. 3E18"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
                 <div className="col-span-12 md:col-span-4">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Tanggal
                   </label>
                   <Input
                     type="date"
                     value={form.tanggal}
                     onChange={(e) => onChange("tanggal", e.target.value)}
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50"
                   />
                 </div>
 
                 <div className="col-span-6 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     AFD
                   </label>
                   <Select
                     value={form.afd}
                     onValueChange={(v) => onChange("afd", v)}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger className="h-10 w-full border-emerald-700/60 bg-slate-950/60 text-emerald-50">
                       <SelectValue placeholder="AFD" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-950 text-emerald-50 border border-emerald-700/70">
                       {AFD_OPTIONS.map((a) => (
                         <SelectItem key={a} value={a}>
                           {a}
@@ -818,7 +815,7 @@ export default function RealisasiTambah() {
                   </Select>
                 </div>
                 <div className="col-span-6 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     TT (Tahun Tanam)
                   </label>
                   <Input
@@ -828,12 +825,12 @@ export default function RealisasiTambah() {
                       onChange("tt", e.target.value.replace(/\D/g, ""))
                     }
                     placeholder="mis. 2004"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                     maxLength={4}
                   />
                 </div>
                 <div className="col-span-6 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Blok
                   </label>
                   <Input
@@ -842,11 +839,11 @@ export default function RealisasiTambah() {
                       onChange("blok", e.target.value.toUpperCase())
                     }
                     placeholder="mis. D6"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
                 <div className="col-span-6 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Luas (Ha)
                   </label>
                   <Input
@@ -854,7 +851,7 @@ export default function RealisasiTambah() {
                     value={form.luas}
                     onChange={(e) => onChange("luas", e.target.value)}
                     placeholder="mis. 29,82"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
               </div>
@@ -862,12 +859,12 @@ export default function RealisasiTambah() {
 
             {/* Detail Pemupukan */}
             <div className="space-y-3">
-              <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+              <p className="text-[11px] font-medium text-emerald-100/80">
                 Detail Pemupukan
               </p>
               <div className="grid grid-cols-12 gap-3">
                 <div className="col-span-6 md:col-span-2">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     INV (Pokok)
                   </label>
                   <Input
@@ -882,22 +879,22 @@ export default function RealisasiTambah() {
                       }));
                     }}
                     placeholder="mis. 2067"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
 
                 <div className="col-span-12 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Jenis Pupuk
                   </label>
                   <Select
                     value={form.jenisPupuk}
                     onValueChange={(v) => onChange("jenisPupuk", v)}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger className="h-10 w-full border-emerald-700/60 bg-slate-950/60 text-emerald-50">
                       <SelectValue placeholder="Pilih jenis pupuk" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-950 text-emerald-50 border border-emerald-700/70">
                       {JENIS_PUPUK.map((j) => (
                         <SelectItem key={j} value={j}>
                           {j.toUpperCase()}
@@ -908,7 +905,7 @@ export default function RealisasiTambah() {
                 </div>
 
                 <div className="col-span-6 md:col-span-2">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Aplikasi (ke-)
                   </label>
                   <Input
@@ -920,12 +917,12 @@ export default function RealisasiTambah() {
                         e.target.value.replace(/[^\d]/g, "")
                       )
                     }
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50"
                   />
                 </div>
 
                 <div className="col-span-6 md:col-span-2">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Dosis (Kg/pokok)
                   </label>
                   <Input
@@ -940,19 +937,19 @@ export default function RealisasiTambah() {
                       }));
                     }}
                     placeholder="mis. 1"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
 
                 <div className="col-span-12 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     KG Pupuk (Total) — otomatis = INV × Dosis
                   </label>
                   <Input
                     inputMode="decimal"
                     value={form.kgPupuk}
                     readOnly
-                    className="h-10 bg-slate-50 dark:bg-slate-900/40"
+                    className="h-10 border-emerald-700/60 bg-slate-900/70 text-emerald-50"
                   />
                 </div>
               </div>
@@ -960,11 +957,15 @@ export default function RealisasiTambah() {
 
             {/* Actions */}
             <div className="flex items-center gap-2 pt-2">
-              <Button type="submit" disabled={submitting} className="gap-2">
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="gap-2 bg-emerald-500/90 text-emerald-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
                 {submitting ? (
                   <>
                     <svg
-                      className="animate-spin h-4 w-4"
+                      className="h-4 w-4 animate-spin"
                       viewBox="0 0 24 24"
                     >
                       <circle
@@ -993,7 +994,7 @@ export default function RealisasiTambah() {
               <Button
                 type="button"
                 variant="outline"
-                className="gap-2"
+                className="gap-2 border-emerald-600/70 text-emerald-50 hover:bg-emerald-900/70"
                 onClick={reset}
               >
                 <RefreshCcw className="h-4 w-4" /> Reset
@@ -1004,8 +1005,8 @@ export default function RealisasiTambah() {
       </Card>
 
       {importing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
-          <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-3 shadow-lg">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-emerald-950/80 backdrop-blur-sm">
+          <div className="flex items-center gap-3 rounded-xl border border-[--glass-border] bg-slate-950/90 px-4 py-3 text-emerald-50 shadow-[0_18px_40px_rgba(0,0,0,0.9)]">
             <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
               <circle
                 className="opacity-25"
@@ -1022,7 +1023,7 @@ export default function RealisasiTambah() {
                 d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
               />
             </svg>
-            <span className="text-sm text-slate-700">
+            <span className="text-sm">
               Mengimport data dari Excel (bulk), mohon tunggu...
             </span>
           </div>

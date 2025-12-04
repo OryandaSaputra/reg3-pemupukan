@@ -205,7 +205,9 @@ function RencanaEditContent() {
       const tanggalYmd = toLocalYmd(found.tanggal);
       const luasStr = found.luasHa ? String(found.luasHa) : "";
       const invStr = found.inv ? String(found.inv) : "";
-      const dosisStr = found.dosisKgPerPokok ? String(found.dosisKgPerPokok) : "";
+      const dosisStr = found.dosisKgPerPokok
+        ? String(found.dosisKgPerPokok)
+        : "";
       const kgPupukStr =
         found.kgPupuk && found.kgPupuk > 0
           ? String(found.kgPupuk)
@@ -348,15 +350,17 @@ function RencanaEditContent() {
     }
   };
 
+  // ============ RENDER STATE LOADING / NOT FOUND ============
+
   if (loadingInitial) {
     return (
-      <section className="space-y-2">
+      <section className="space-y-3">
         <SectionHeader
           title="Edit Rencana Pemupukan"
           desc="Memuat data rencana yang dipilih…"
         />
-        <Card className="bg-white/80 dark:bg-slate-900/60">
-          <CardContent className="py-10 flex items-center justify-center text-sm text-slate-600 dark:text-slate-300">
+        <Card className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.85)]">
+          <CardContent className="py-10 flex items-center justify-center text-sm text-emerald-50">
             Memuat data…
           </CardContent>
         </Card>
@@ -367,18 +371,18 @@ function RencanaEditContent() {
   if (!form.id) {
     // kalau gagal load / tidak ada data
     return (
-      <section className="space-y-2">
+      <section className="space-y-3">
         <SectionHeader
           title="Edit Rencana Pemupukan"
           desc="Data tidak ditemukan."
         />
-        <Card className="bg-white/80 dark:bg-slate-900/60">
-          <CardContent className="py-10 flex flex-col items-center justify-center gap-3 text-sm text-slate-600 dark:text-slate-300">
+        <Card className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.85)]">
+          <CardContent className="py-10 flex flex-col items-center justify-center gap-3 text-sm text-emerald-50">
             <span>Data rencana tidak ditemukan atau sudah dihapus.</span>
             <Button
               type="button"
               variant="outline"
-              className="gap-2"
+              className="gap-2 border-emerald-600/70 text-emerald-50 hover:bg-emerald-900/70"
               onClick={() => router.push("/pemupukan/rencana/riwayat")}
             >
               <ArrowLeft className="h-4 w-4" />
@@ -390,8 +394,10 @@ function RencanaEditContent() {
     );
   }
 
+  // ============ RENDER FORM ============
+
   return (
-    <section id="rencana-edit" className="space-y-2 scroll-mt-24">
+    <section id="rencana-edit" className="space-y-3 scroll-mt-24">
       <SectionHeader
         title="Rencana Pemupukan - Edit Data"
         desc={`Edit data rencana pemupukan (ID: ${form.id})`}
@@ -402,7 +408,7 @@ function RencanaEditContent() {
           type="button"
           variant="outline"
           size="sm"
-          className="gap-2"
+          className="gap-2 border-emerald-600/70 text-emerald-50 hover:bg-emerald-900/70"
           onClick={() => router.push("/pemupukan/rencana/riwayat")}
         >
           <ArrowLeft className="h-4 w-4" />
@@ -410,16 +416,18 @@ function RencanaEditContent() {
         </Button>
       </div>
 
-      <Card className="bg-white/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800">
+      <Card className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.85)]">
         <CardHeader className="pb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-[13px]">Formulir Rencana (Edit)</CardTitle>
+          <CardTitle className="text-[13px] text-emerald-50">
+            Formulir Rencana (Edit)
+          </CardTitle>
         </CardHeader>
 
-        <CardContent className="pt-2">
+        <CardContent className="pt-3">
           <form className="space-y-6" onSubmit={handleSubmit}>
             {/* Kategori */}
             <div className="space-y-2">
-              <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+              <p className="text-[11px] font-medium text-emerald-100/80">
                 Kategori Tanaman
               </p>
               <div className="max-w-xs">
@@ -427,10 +435,10 @@ function RencanaEditContent() {
                   value={form.kategori}
                   onValueChange={(v) => onChange("kategori", v as Kategori)}
                 >
-                  <SelectTrigger className="h-9 w-full">
+                  <SelectTrigger className="h-9 w-full border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40">
                     <SelectValue placeholder="Pilih kategori (TM / TBM / BIBITAN)" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-slate-950 text-emerald-50 border border-emerald-700/70">
                     <SelectItem value="TM">
                       TM (Tanaman Menghasilkan)
                     </SelectItem>
@@ -445,22 +453,22 @@ function RencanaEditContent() {
 
             {/* Identitas Lokasi */}
             <div className="space-y-3">
-              <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+              <p className="text-[11px] font-medium text-emerald-100/80">
                 Identitas Lokasi
               </p>
               <div className="grid grid-cols-12 gap-3">
                 <div className="col-span-12 md:col-span-4">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Nama Kebun
                   </label>
                   <Select
                     value={form.kebun}
                     onValueChange={(v) => onChange("kebun", v)}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger className="h-10 w-full border-emerald-700/60 bg-slate-950/60 text-emerald-50">
                       <SelectValue placeholder="Pilih kebun" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-950 text-emerald-50 border border-emerald-700/70">
                       {kebunOptions.map((o) => (
                         <SelectItem key={o.code} value={o.code}>
                           {o.name} ({o.code})
@@ -469,8 +477,9 @@ function RencanaEditContent() {
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="col-span-12 md:col-span-4">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Kode Kebun
                   </label>
                   <Input
@@ -479,33 +488,34 @@ function RencanaEditContent() {
                       onChange("kodeKebun", e.target.value.toUpperCase())
                     }
                     placeholder="mis. 3E18"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
+
                 <div className="col-span-12 md:col-span-4">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Tanggal (opsional)
                   </label>
                   <Input
                     type="date"
                     value={form.tanggal}
                     onChange={(e) => onChange("tanggal", e.target.value)}
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50"
                   />
                 </div>
 
                 <div className="col-span-6 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     AFD
                   </label>
                   <Select
                     value={form.afd}
                     onValueChange={(v) => onChange("afd", v)}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger className="h-10 w-full border-emerald-700/60 bg-slate-950/60 text-emerald-50">
                       <SelectValue placeholder="AFD" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-950 text-emerald-50 border border-emerald-700/70">
                       {AFD_OPTIONS.map((a) => (
                         <SelectItem key={a} value={a}>
                           {a}
@@ -514,8 +524,9 @@ function RencanaEditContent() {
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="col-span-6 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     TT (Tahun Tanam)
                   </label>
                   <Input
@@ -525,12 +536,13 @@ function RencanaEditContent() {
                       onChange("tt", e.target.value.replace(/\D/g, ""))
                     }
                     placeholder="mis. 2004"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                     maxLength={4}
                   />
                 </div>
+
                 <div className="col-span-6 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Blok
                   </label>
                   <Input
@@ -539,11 +551,12 @@ function RencanaEditContent() {
                       onChange("blok", e.target.value.toUpperCase())
                     }
                     placeholder="mis. D6"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
+
                 <div className="col-span-6 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Luas (Ha)
                   </label>
                   <Input
@@ -551,7 +564,7 @@ function RencanaEditContent() {
                     value={form.luas}
                     onChange={(e) => onChange("luas", e.target.value)}
                     placeholder="mis. 29,82"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
               </div>
@@ -559,12 +572,12 @@ function RencanaEditContent() {
 
             {/* Detail Pemupukan */}
             <div className="space-y-3">
-              <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+              <p className="text-[11px] font-medium text-emerald-100/80">
                 Detail Pemupukan
               </p>
               <div className="grid grid-cols-12 gap-3">
                 <div className="col-span-6 md:col-span-2">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     INV (Pokok)
                   </label>
                   <Input
@@ -579,22 +592,22 @@ function RencanaEditContent() {
                       }));
                     }}
                     placeholder="mis. 2067"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
 
                 <div className="col-span-12 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Jenis Pupuk
                   </label>
                   <Select
                     value={form.jenisPupuk}
                     onValueChange={(v) => onChange("jenisPupuk", v)}
                   >
-                    <SelectTrigger className="h-10 w-full">
+                    <SelectTrigger className="h-10 w-full border-emerald-700/60 bg-slate-950/60 text-emerald-50">
                       <SelectValue placeholder="Pilih jenis pupuk" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-950 text-emerald-50 border border-emerald-700/70">
                       {JENIS_PUPUK.map((j) => (
                         <SelectItem key={j} value={j}>
                           {j.toUpperCase()}
@@ -605,7 +618,7 @@ function RencanaEditContent() {
                 </div>
 
                 <div className="col-span-6 md:col-span-2">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Aplikasi (ke-)
                   </label>
                   <Input
@@ -617,12 +630,12 @@ function RencanaEditContent() {
                         e.target.value.replace(/[^\d]/g, "")
                       )
                     }
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50"
                   />
                 </div>
 
                 <div className="col-span-6 md:col-span-2">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     Dosis (Kg/pokok)
                   </label>
                   <Input
@@ -637,19 +650,19 @@ function RencanaEditContent() {
                       }));
                     }}
                     placeholder="mis. 1"
-                    className="h-10"
+                    className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
 
                 <div className="col-span-12 md:col-span-3">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/70">
                     KG Pupuk (Total) — otomatis = INV × Dosis
                   </label>
                   <Input
                     inputMode="decimal"
                     value={form.kgPupuk}
                     readOnly
-                    className="h-10 bg-slate-50 dark:bg-slate-900/40"
+                    className="h-10 border-emerald-700/60 bg-slate-900/70 text-emerald-50"
                   />
                 </div>
               </div>
@@ -657,7 +670,11 @@ function RencanaEditContent() {
 
             {/* Actions */}
             <div className="flex flex-wrap items-center gap-2 pt-2">
-              <Button type="submit" disabled={submitting} className="gap-2">
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="gap-2 bg-emerald-500/90 text-emerald-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
                 {submitting ? (
                   <>
                     <svg
@@ -691,7 +708,7 @@ function RencanaEditContent() {
               <Button
                 type="button"
                 variant="outline"
-                className="gap-2"
+                className="gap-2 border-emerald-600/70 text-emerald-50 hover:bg-emerald-900/70"
                 onClick={resetToInitial}
               >
                 <RefreshCcw className="h-4 w-4" /> Reset ke Data Awal
@@ -710,13 +727,13 @@ export default function RencanaEditPage() {
   return (
     <Suspense
       fallback={
-        <section className="space-y-2">
+        <section className="space-y-3">
           <SectionHeader
             title="Edit Rencana Pemupukan"
             desc="Menyiapkan halaman edit rencana…"
           />
-          <Card className="bg-white/80 dark:bg-slate-900/60">
-            <CardContent className="py-10 flex items-center justify-center text-sm text-slate-600 dark:text-slate-300">
+          <Card className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.85)]">
+            <CardContent className="py-10 flex items-center justify-center text-sm text-emerald-50">
               Memuat parameter dan data awal…
             </CardContent>
           </Card>

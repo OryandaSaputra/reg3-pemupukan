@@ -127,16 +127,45 @@ function mapApiToHistoryRow(r: ApiRencana): HistoryRow {
   };
 }
 
+/* ==== CACHING DI LEVEL MODUL (IN-MEMORY DI CLIENT) ==== */
+
+let rencanaCache: HistoryRow[] | null = null;
+let rencanaCachePromise: Promise<HistoryRow[]> | null = null;
+
+export function invalidateRencanaCache() {
+  rencanaCache = null;
+  rencanaCachePromise = null;
+}
+
 // helper: fetch semua data (tanpa pagination) – dipakai untuk RIWAYAT & EXPORT
 async function fetchAllRencanaForExport(): Promise<HistoryRow[]> {
-  const res = await fetch("/api/pemupukan/rencana", { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error("Gagal mengambil semua data rencana");
-  }
+  // kalau sudah ada cache → pakai
+  if (rencanaCache) return rencanaCache;
 
-  const json = await res.json();
-  const dataArray: ApiRencana[] = Array.isArray(json) ? json : json.data;
-  return dataArray.map(mapApiToHistoryRow);
+  // kalau sudah ada request yang lagi jalan → tunggu promise-nya
+  if (rencanaCachePromise) return rencanaCachePromise;
+
+  rencanaCachePromise = (async () => {
+    const res = await fetch("/api/pemupukan/rencana", { cache: "no-store" });
+    if (!res.ok) {
+      throw new Error("Gagal mengambil semua data rencana");
+    }
+
+    const json = await res.json();
+    const dataArray: ApiRencana[] = Array.isArray(json) ? json : json.data;
+    const mapped = dataArray.map(mapApiToHistoryRow);
+
+    rencanaCache = mapped;
+    rencanaCachePromise = null;
+
+    return mapped;
+  })().catch((err) => {
+    // kalau error, jangan simpan promise yang gagal
+    rencanaCachePromise = null;
+    throw err;
+  });
+
+  return rencanaCachePromise;
 }
 
 export default function RencanaRiwayat() {
@@ -418,6 +447,7 @@ export default function RencanaRiwayat() {
 
       setRows((prev) => prev.filter((r) => r.id !== row.id));
       setTotal((prev) => (prev > 0 ? prev - 1 : 0));
+      invalidateRencanaCache(); // ✨ reset cache setelah mutasi
 
       await Swal.fire({
         title: "Berhasil",
@@ -480,6 +510,7 @@ export default function RencanaRiwayat() {
       setQ("");
       setSelectedKebun("");
       setTotal(0);
+      invalidateRencanaCache(); // ✨ reset cache setelah mutasi besar
 
       await Swal.fire({
         title: "Berhasil",
@@ -558,6 +589,7 @@ export default function RencanaRiwayat() {
         deletedCount > 0 ? Math.max(0, prev - deletedCount) : prev
       );
       setSelectedKebun("");
+      invalidateRencanaCache(); // ✨ reset cache setelah mutasi per kebun
 
       await Swal.fire({
         title: "Berhasil",
@@ -997,14 +1029,15 @@ export default function RencanaRiwayat() {
           desc="Daftar input rencana terbaru dari database"
         />
 
-        <Card className="bg-white/80 dark:bg-slate-900/60">
+        {/* Sama seperti RealisasiRiwayat: kartu kaca */}
+        <Card className="glass-card border border-white/20 dark:border-white/10 shadow-lg">
           {/* Header + action buttons */}
-          <CardHeader className="pb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <CardHeader className="pb-2 glass-header flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="text-[13px]">
                 Pencarian, Aksi, &amp; Export
               </CardTitle>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+              <p className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-300">
                 Filter data, hapus, atau export riwayat rencana ke Excel/PDF.
               </p>
             </div>
@@ -1016,7 +1049,7 @@ export default function RencanaRiwayat() {
                   type="button"
                   onClick={handleExportExcelAll}
                   disabled={loading || total === 0 || exporting}
-                  className="px-3 py-1.5 rounded border border-emerald-300 text-[11px] text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-md text-[11px] bg-white/30 backdrop-blur-md border border-white/20 shadow-sm hover:bg-white/40 transition disabled:opacity-50 text-emerald-900"
                 >
                   Export Excel (Semua Kebun)
                 </button>
@@ -1024,7 +1057,7 @@ export default function RencanaRiwayat() {
                   type="button"
                   onClick={handleExportExcelByKebun}
                   disabled={loading || !selectedKebun || exporting}
-                  className="px-3 py-1.5 rounded border border-emerald-300 text-[11px] text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-md text-[11px] bg-white/30 backdrop-blur-md border border-white/20 shadow-sm hover:bg-white/40 transition disabled:opacity-50 text-emerald-900"
                 >
                   Export Excel (Per Kebun)
                 </button>
@@ -1036,7 +1069,7 @@ export default function RencanaRiwayat() {
                   type="button"
                   onClick={handleExportPdfAll}
                   disabled={loading || total === 0 || exporting}
-                  className="px-3 py-1.5 rounded border border-sky-300 text-[11px] text-sky-800 hover:bg-sky-50 disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-md text-[11px] bg-white/30 backdrop-blur-md border border-white/20 shadow-sm hover:bg-white/40 transition disabled:opacity-50 text-sky-900"
                 >
                   Export PDF (Semua Kebun)
                 </button>
@@ -1044,7 +1077,7 @@ export default function RencanaRiwayat() {
                   type="button"
                   onClick={handleExportPdfByKebun}
                   disabled={loading || !selectedKebun || exporting}
-                  className="px-3 py-1.5 rounded border border-sky-300 text-[11px] text-sky-800 hover:bg-sky-50 disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-md text-[11px] bg-white/30 backdrop-blur-md border border-white/20 shadow-sm hover:bg-white/40 transition disabled:opacity-50 text-sky-900"
                 >
                   Export PDF (Per Kebun)
                 </button>
@@ -1055,7 +1088,7 @@ export default function RencanaRiwayat() {
                 type="button"
                 onClick={handleDeleteAll}
                 disabled={total === 0 || loading || exporting}
-                className="px-3 py-1.5 rounded border border-red-300 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
+                className="px-3 py-1.5 rounded-md text-[11px] bg-white/30 backdrop-blur-md border border-white/20 shadow-sm hover:bg-red-50/80 text-red-700 disabled:opacity-50"
               >
                 Hapus Semua Data
               </button>
@@ -1070,7 +1103,7 @@ export default function RencanaRiwayat() {
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                   placeholder="Cari kategori (TM/TBM/BIBITAN) / kebun / AFD / blok / jenis pupuk / tanggal…"
-                  className="h-9"
+                  className="h-9 glass-input text-[11px]"
                 />
               </div>
 
@@ -1080,7 +1113,7 @@ export default function RencanaRiwayat() {
                   onValueChange={(v) => setSelectedKebun(v)}
                   disabled={loading || exporting}
                 >
-                  <SelectTrigger className="h-9 w-[220px]">
+                  <SelectTrigger className="h-9 w-[220px] glass-input text-[11px]">
                     <SelectValue placeholder="Filter / Pilih kebun" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1096,7 +1129,7 @@ export default function RencanaRiwayat() {
                   type="button"
                   onClick={handleDeleteByKebun}
                   disabled={!selectedKebun || loading || total === 0 || exporting}
-                  className="px-3 py-1.5 rounded border border-red-300 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-md text-[11px] bg-white/30 backdrop-blur-md border border-white/20 shadow-sm hover:bg-red-50/80 text-red-700 disabled:opacity-50"
                 >
                   Hapus per Kebun
                 </button>
@@ -1106,27 +1139,57 @@ export default function RencanaRiwayat() {
             {/* Tabel + virtual scroll (per halaman) */}
             <div
               ref={scrollParentRef}
-              className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-md max-h-[520px]"
+              className="overflow-x-auto glass-panel rounded-xl max-h-[520px] border border-white/10"
             >
               <table className="min-w-full text-xs">
-                <thead className="bg-slate-100 dark:bg-slate-800/40 sticky top-0 z-10">
+                {/* HEADER SAMA STYLING DENGAN REALISASIRIWAYAT */}
+                <thead className="sticky top-0 z-10 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md text-slate-800 dark:text-slate-100 border-b border-white/10">
                   <tr>
-                    <th className="px-3 py-2 text-left">Tanggal</th>
-                    <th className="px-3 py-2 text-left">Kategori</th>
-                    <th className="px-3 py-2 text-left">Kebun</th>
-                    <th className="px-3 py-2 text-left">Kode Kebun</th>
-                    <th className="px-3 py-2 text-left">AFD</th>
-                    <th className="px-3 py-2 text-left">TT</th>
-                    <th className="px-3 py-2 text-left">Blok</th>
-                    <th className="px-3 py-2 text-right">Luas (Ha)</th>
-                    <th className="px-3 py-2 text-right">INV</th>
-                    <th className="px-3 py-2 text-left">Jenis Pupuk</th>
-                    <th className="px-3 py-2 text-right">Aplikasi</th>
-                    <th className="px-3 py-2 text-right">Dosis (Kg/pokok)</th>
-                    <th className="px-3 py-2 text-right">Kg Pupuk</th>
-                    <th className="px-3 py-2 text-center">Aksi</th>
+                    <th className="px-3 py-2 text-left font-semibold text-xs tracking-wide">
+                      Tanggal
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-xs tracking-wide">
+                      Kategori
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-xs tracking-wide">
+                      Kebun
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-xs tracking-wide">
+                      Kode Kebun
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-xs tracking-wide">
+                      AFD
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-xs tracking-wide">
+                      TT
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-xs tracking-wide">
+                      Blok
+                    </th>
+                    <th className="px-3 py-2 text-right font-semibold text-xs tracking-wide">
+                      Luas (Ha)
+                    </th>
+                    <th className="px-3 py-2 text-right font-semibold text-xs tracking-wide">
+                      INV
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-xs tracking-wide">
+                      Jenis Pupuk
+                    </th>
+                    <th className="px-3 py-2 text-right font-semibold text-xs tracking-wide">
+                      Aplikasi
+                    </th>
+                    <th className="px-3 py-2 text-right font-semibold text-xs tracking-wide">
+                      Dosis (Kg/pokok)
+                    </th>
+                    <th className="px-3 py-2 text-right font-semibold text-xs tracking-wide">
+                      Kg Pupuk
+                    </th>
+                    <th className="px-3 py-2 text-center font-semibold text-xs tracking-wide">
+                      Aksi
+                    </th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {paddingTop > 0 && (
                     <tr>
@@ -1141,7 +1204,7 @@ export default function RencanaRiwayat() {
                     return (
                       <tr
                         key={`${r.id}-${virtualRow.index}`}
-                        className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                        className="border-t border-white/10 hover:bg-white/10 dark:hover:bg-white/5 transition"
                       >
                         <td className="px-3 py-2">{r.tanggal}</td>
                         <td className="px-3 py-2">{r.kategori}</td>
@@ -1173,14 +1236,14 @@ export default function RencanaRiwayat() {
                             <button
                               type="button"
                               onClick={() => handleEdit(r)}
-                              className="px-2 py-1 rounded border border-slate-300 text-[11px] hover:bg-slate-100 dark:hover:bg-slate-800"
+                              className="px-2 py-1 rounded-md border border-white/20 bg-white/30 backdrop-blur-md text-[11px] hover:bg-white/50 dark:hover:bg-white/20"
                             >
                               Edit
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDelete(r)}
-                              className="px-2 py-1 rounded border border-red-300 text-[11px] text-red-700 hover:bg-red-50"
+                              className="px-2 py-1 rounded-md border border-red-300 bg-white/40 backdrop-blur-md text-[11px] text-red-700 hover:bg-red-50/80"
                             >
                               Hapus
                             </button>
@@ -1200,7 +1263,7 @@ export default function RencanaRiwayat() {
                     <tr>
                       <td
                         colSpan={14}
-                        className="px-3 py-6 text-center text-slate-500"
+                        className="px-3 py-6 text-center text-slate-200"
                       >
                         Tidak ada data.
                       </td>
@@ -1211,7 +1274,7 @@ export default function RencanaRiwayat() {
                     <tr>
                       <td
                         colSpan={14}
-                        className="px-3 py-6 text-center text-slate-500"
+                        className="px-3 py-6 text-center text-slate-200"
                       >
                         Memuat data…
                       </td>
@@ -1222,7 +1285,7 @@ export default function RencanaRiwayat() {
             </div>
 
             {/* Info ringkas + pagination */}
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-600 dark:text-slate-300">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-100/90">
               <span>
                 {filtered.length === 0 ? (
                   <>Menampilkan 0 data dari total {total} data</>
@@ -1243,7 +1306,7 @@ export default function RencanaRiwayat() {
                   type="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1 || filtered.length === 0}
-                  className="px-2 py-1 rounded border border-slate-300 text-[11px] disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="px-2 py-1 rounded-md border border-white/20 bg-white/20 backdrop-blur-md text-[11px] disabled:opacity-40 hover:bg-white/40 dark:hover:bg-white/10"
                 >
                   Sebelumnya
                 </button>
@@ -1257,7 +1320,7 @@ export default function RencanaRiwayat() {
                   disabled={
                     currentPage === totalPages || filtered.length === 0
                   }
-                  className="px-2 py-1 rounded border border-slate-300 text-[11px] disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="px-2 py-1 rounded-md border border-white/20 bg-white/20 backdrop-blur-md text-[11px] disabled:opacity-40 hover:bg-white/40 dark:hover:bg-white/10"
                 >
                   Berikutnya
                 </button>

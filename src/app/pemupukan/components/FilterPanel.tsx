@@ -198,12 +198,15 @@ export default function FilterPanel(props: Props) {
 
   return (
     <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
 
-      <div className="absolute right-0 top-0 h-full w-full max-w-xl bg-white dark:bg-slate-900 shadow-xl p-6 overflow-y-auto">
+      <div className="absolute right-0 top-0 h-full w-full max-w-xl bg-[--glass-bg-strong] text-emerald-50 backdrop-blur-2xl shadow-[0_26px_55px_rgba(0,0,0,0.9)] border-l border-[--glass-border] p-6 overflow-y-auto rounded-l-3xl">
         {/* HEADER */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold flex items-center gap-2">
+          <h2 className="text-base font-semibold flex items-center gap-2 text-emerald-50/95">
             <FilterIcon className="h-5 w-5" /> Filter
           </h2>
 
@@ -211,7 +214,7 @@ export default function FilterPanel(props: Props) {
             <Button
               variant="outline"
               onClick={handleReset}
-              className="gap-2 h-8 px-3"
+              className="gap-2 h-8 px-3 rounded-full border-[--glass-border] bg-white/0 hover:bg-white/10 hover:text-emerald-50/90"
               type="button"
               disabled={isMetaLoading}
             >
@@ -220,7 +223,7 @@ export default function FilterPanel(props: Props) {
 
             <Button
               onClick={applyFilter}
-              className="gap-2 h-8 px-3 bg-green-600 hover:bg-green-700 text-white"
+              className="gap-2 h-8 px-4 rounded-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-500 hover:from-emerald-400 hover:via-emerald-500 hover:to-emerald-400 text-white shadow-[0_14px_35px_rgba(4,120,87,0.65)]"
               type="button"
               disabled={isMetaLoading}
             >
@@ -230,7 +233,7 @@ export default function FilterPanel(props: Props) {
             <Button
               variant="outline"
               onClick={onClose}
-              className="h-8 px-3"
+              className="h-8 px-3 rounded-full border-[--glass-border] bg-white/0 hover:bg-white/10 hover:text-emerald-50/90"
               type="button"
             >
               Tutup
@@ -240,13 +243,13 @@ export default function FilterPanel(props: Props) {
 
         {/* FORM + LOADING OVERLAY */}
         <div className="relative">
-          <Card className="bg-white/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800">
+          <Card className="glass-surface rounded-2xl border border-[--glass-border]">
             <CardContent className="pt-4">
               {/* pakai 2 kolom di desktop biar rapi */}
               <div className="grid md:grid-cols-2 gap-3">
                 {/* Distrik */}
                 <div>
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/75">
                     Distrik
                   </label>
                   <Select
@@ -254,10 +257,10 @@ export default function FilterPanel(props: Props) {
                     onValueChange={setDistrik}
                     disabled={isMetaLoading}
                   >
-                    <SelectTrigger className="w-full h-9">
+                    <SelectTrigger className="w-full h-9 glass-input rounded-xl border-[--glass-border] text-emerald-50/90">
                       <SelectValue placeholder="Pilih Distrik" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-900 text-emerald-50 border border-emerald-500/40 shadow-xl backdrop-blur-none">
                       <SelectItem value="all">Semua</SelectItem>
                       {safeDistrikOptions.map((d) => (
                         <SelectItem key={d} value={d}>
@@ -270,7 +273,7 @@ export default function FilterPanel(props: Props) {
 
                 {/* Kebun */}
                 <div>
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/75">
                     Kebun
                   </label>
                   <Select
@@ -278,10 +281,10 @@ export default function FilterPanel(props: Props) {
                     onValueChange={setKebun}
                     disabled={isMetaLoading}
                   >
-                    <SelectTrigger className="w-full h-9">
+                    <SelectTrigger className="w-full h-9 glass-input rounded-xl border-[--glass-border] text-emerald-50/90">
                       <SelectValue placeholder="Pilih Kebun" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-900 text-emerald-50 border border-emerald-500/40 shadow-xl backdrop-blur-none">
                       <SelectItem value="all">Semua</SelectItem>
                       {safeKebunOptions.map((k) => (
                         <SelectItem key={k} value={k}>
@@ -294,7 +297,7 @@ export default function FilterPanel(props: Props) {
 
                 {/* Kategori */}
                 <div>
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/75">
                     Kategori Tanaman
                   </label>
                   <Select
@@ -302,10 +305,10 @@ export default function FilterPanel(props: Props) {
                     onValueChange={(v) => setKategori(v as Kategori | "all")}
                     disabled={isMetaLoading}
                   >
-                    <SelectTrigger className="w-full h-9">
+                    <SelectTrigger className="w-full h-9 glass-input rounded-xl border-[--glass-border] text-emerald-50/90">
                       <SelectValue placeholder="Pilih Kategori" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-900 text-emerald-50 border border-emerald-500/40 shadow-xl backdrop-blur-none">
                       {safeKategoriOptions.map((k) => (
                         <SelectItem key={k} value={k}>
                           {k === "all"
@@ -323,7 +326,7 @@ export default function FilterPanel(props: Props) {
 
                 {/* AFD */}
                 <div>
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/75">
                     Afdeling (AFD)
                   </label>
                   <Select
@@ -331,10 +334,10 @@ export default function FilterPanel(props: Props) {
                     onValueChange={setAfd}
                     disabled={isMetaLoading}
                   >
-                    <SelectTrigger className="w-full h-9">
+                    <SelectTrigger className="w-full h-9 glass-input rounded-xl border-[--glass-border] text-emerald-50/90">
                       <SelectValue placeholder="Pilih AFD" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-900 text-emerald-50 border border-emerald-500/40 shadow-xl backdrop-blur-none">
                       <SelectItem value="all">Semua</SelectItem>
                       {safeAfdOptions.map((a) => (
                         <SelectItem key={a} value={a}>
@@ -347,7 +350,7 @@ export default function FilterPanel(props: Props) {
 
                 {/* TT */}
                 <div>
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/75">
                     Tahun Tanam (TT)
                   </label>
                   <Select
@@ -355,10 +358,10 @@ export default function FilterPanel(props: Props) {
                     onValueChange={setTt}
                     disabled={isMetaLoading}
                   >
-                    <SelectTrigger className="w-full h-9">
+                    <SelectTrigger className="w-full h-9 glass-input rounded-xl border-[--glass-border] text-emerald-50/90">
                       <SelectValue placeholder="Pilih Tahun Tanam" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-900 text-emerald-50 border border-emerald-500/40 shadow-xl backdrop-blur-none">
                       <SelectItem value="all">Semua</SelectItem>
                       {safeTtOptions.map((t) => (
                         <SelectItem key={t} value={t}>
@@ -371,7 +374,7 @@ export default function FilterPanel(props: Props) {
 
                 {/* Blok */}
                 <div>
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/75">
                     Blok
                   </label>
                   <Select
@@ -379,10 +382,10 @@ export default function FilterPanel(props: Props) {
                     onValueChange={setBlok}
                     disabled={isMetaLoading}
                   >
-                    <SelectTrigger className="w-full h-9">
+                    <SelectTrigger className="w-full h-9 glass-input rounded-xl border-[--glass-border] text-emerald-50/90">
                       <SelectValue placeholder="Pilih Blok" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-900 text-emerald-50 border border-emerald-500/40 shadow-xl backdrop-blur-none">
                       <SelectItem value="all">Semua</SelectItem>
                       {safeBlokOptions.map((b) => (
                         <SelectItem key={b} value={b}>
@@ -395,7 +398,7 @@ export default function FilterPanel(props: Props) {
 
                 {/* Jenis Pupuk */}
                 <div>
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/75">
                     Jenis Pupuk
                   </label>
                   <Select
@@ -403,10 +406,10 @@ export default function FilterPanel(props: Props) {
                     onValueChange={setJenis}
                     disabled={isMetaLoading}
                   >
-                    <SelectTrigger className="w-full h-9">
+                    <SelectTrigger className="w-full h-9 glass-input rounded-xl border-[--glass-border] text-emerald-50/90">
                       <SelectValue placeholder="Pilih Jenis Pupuk" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-900 text-emerald-50 border border-emerald-500/40 shadow-xl backdrop-blur-none">
                       {safeJenisOptions.map((j) => (
                         <SelectItem key={j} value={j}>
                           {j === "all" ? "Semua" : j.toUpperCase()}
@@ -418,7 +421,7 @@ export default function FilterPanel(props: Props) {
 
                 {/* Aplikasi */}
                 <div>
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/75">
                     Aplikasi
                   </label>
                   <Select
@@ -426,10 +429,10 @@ export default function FilterPanel(props: Props) {
                     onValueChange={setAplikasi}
                     disabled={isMetaLoading}
                   >
-                    <SelectTrigger className="w-full h-9">
+                    <SelectTrigger className="w-full h-9 glass-input rounded-xl border-[--glass-border] text-emerald-50/90">
                       <SelectValue placeholder="Pilih Aplikasi" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-900 text-emerald-50 border border-emerald-500/40 shadow-xl backdrop-blur-none">
                       {safeAplikasiOptions.map((a) => (
                         <SelectItem key={a} value={a}>
                           {a === "all" ? "Semua" : `Aplikasi ${a}`}
@@ -441,7 +444,7 @@ export default function FilterPanel(props: Props) {
 
                 {/* Tahun Data */}
                 <div>
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/75">
                     Tahun Data
                   </label>
                   <Select
@@ -451,10 +454,10 @@ export default function FilterPanel(props: Props) {
                     }
                     disabled={isMetaLoading}
                   >
-                    <SelectTrigger className="w-full h-9">
+                    <SelectTrigger className="w-full h-9 glass-input rounded-xl border-[--glass-border] text-emerald-50/90">
                       <SelectValue placeholder="Pilih Tahun Data" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-slate-900 text-emerald-50 border border-emerald-500/40 shadow-xl backdrop-blur-none">
                       <SelectItem value="all">Semua</SelectItem>
                       {safeYearOptions.map((y) => (
                         <SelectItem key={y} value={y}>
@@ -467,28 +470,28 @@ export default function FilterPanel(props: Props) {
 
                 {/* Date From */}
                 <div>
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/75">
                     Realisasi: Dari
                   </label>
                   <Input
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="h-9"
+                    className="h-9 glass-input rounded-xl border-[--glass-border] text-emerald-50/90"
                     disabled={isMetaLoading}
                   />
                 </div>
 
                 {/* Date To */}
                 <div>
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] text-emerald-100/75">
                     Realisasi: Sampai
                   </label>
                   <Input
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="h-9"
+                    className="h-9 glass-input rounded-xl border-[--glass-border] text-emerald-50/90"
                     disabled={isMetaLoading}
                   />
                 </div>
@@ -497,37 +500,59 @@ export default function FilterPanel(props: Props) {
               {/* BADGE FILTER AKTIF */}
               <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
                 {distrik !== "all" && (
-                  <Badge variant="secondary">Distrik: {distrik}</Badge>
+                  <Badge className="bg-white/10 border border-white/30 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1">
+                    Distrik: {distrik}
+                  </Badge>
                 )}
                 {kebun !== "all" && (
-                  <Badge variant="secondary">
+                  <Badge className="bg-white/10 border border-white/30 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1">
                     Kebun: {KEBUN_LABEL[kebun] ?? kebun}
                   </Badge>
                 )}
                 {kategori !== "all" && (
-                  <Badge variant="secondary">Kategori: {kategori}</Badge>
+                  <Badge className="bg-white/10 border border-white/30 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1">
+                    Kategori: {kategori}
+                  </Badge>
                 )}
                 {afd !== "all" && (
-                  <Badge variant="secondary">AFD: {afd}</Badge>
+                  <Badge className="bg-white/10 border border-white/30 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1">
+                    AFD: {afd}
+                  </Badge>
                 )}
-                {tt !== "all" && <Badge variant="secondary">TT: {tt}</Badge>}
+                {tt !== "all" && (
+                  <Badge className="bg-white/10 border border-white/30 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1">
+                    TT: {tt}
+                  </Badge>
+                )}
                 {blok !== "all" && (
-                  <Badge variant="secondary">Blok: {blok}</Badge>
+                  <Badge className="bg-white/10 border border-white/30 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1">
+                    Blok: {blok}
+                  </Badge>
                 )}
                 {jenis !== "all" && (
-                  <Badge variant="secondary">Jenis: {jenis}</Badge>
+                  <Badge className="bg-white/10 border border-white/30 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1">
+                    Jenis: {jenis}
+                  </Badge>
                 )}
                 {aplikasi !== "all" && (
-                  <Badge variant="secondary">Aplikasi: {aplikasi}</Badge>
+                  <Badge className="bg-white/10 border border-white/30 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1">
+                    Aplikasi: {aplikasi}
+                  </Badge>
                 )}
                 {dataYear && (
-                  <Badge variant="secondary">Tahun: {dataYear}</Badge>
+                  <Badge className="bg-white/10 border border-white/30 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1">
+                    Tahun: {dataYear}
+                  </Badge>
                 )}
                 {dateFrom && (
-                  <Badge variant="secondary">Dari: {dateFrom}</Badge>
+                  <Badge className="bg-white/10 border border-white/30 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1">
+                    Dari: {dateFrom}
+                  </Badge>
                 )}
                 {dateTo && (
-                  <Badge variant="secondary">Sampai: {dateTo}</Badge>
+                  <Badge className="bg-white/10 border border-white/30 text-emerald-50/95 backdrop-blur-md rounded-full px-2.5 py-1">
+                    Sampai: {dateTo}
+                  </Badge>
                 )}
 
                 {distrik === "all" &&
@@ -541,7 +566,7 @@ export default function FilterPanel(props: Props) {
                   !dataYear &&
                   !dateFrom &&
                   !dateTo && (
-                    <span className="text-slate-400 dark:text-slate-500">
+                    <span className="text-emerald-100/60">
                       Tidak ada filter aktif
                     </span>
                   )}
@@ -551,9 +576,9 @@ export default function FilterPanel(props: Props) {
 
           {/* 🔄 OVERLAY LOADING META */}
           {isMetaLoading && (
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-white/70 dark:bg-slate-900/70">
-              <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
-              <p className="text-[11px] text-slate-600 dark:text-slate-300">
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-black/35 backdrop-blur-md">
+              <Loader2 className="h-6 w-6 animate-spin text-emerald-300" />
+              <p className="text-[11px] text-emerald-50/85">
                 Memuat opsi filter...
               </p>
             </div>

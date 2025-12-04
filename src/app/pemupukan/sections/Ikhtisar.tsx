@@ -1,7 +1,5 @@
 import SectionHeader from "../components/SectionHeader";
-// import ScopeCard from "../components/ScopeCard"; // sudah tidak dipakai
 import { Card, CardContent } from "@/components/ui/card";
-import StatLine from "../components/StatLine";
 
 export default function Ikhtisar({
   totals,
@@ -42,24 +40,21 @@ export default function Ikhtisar({
 
   const num = (v: number) => v.toLocaleString("id-ID");
 
+  // KPI card bawah – fleksibel, tidak pakai h-full
   const kpiCardCx =
-    "h-full shadow-sm hover:shadow-md transition-shadow rounded-2xl ring-1 " +
-    "bg-white/80 dark:bg-slate-900/60 ring-slate-200/60 dark:ring-slate-800";
+    "rounded-2xl glass-surface overflow-visible";
 
-  // warna progress hijau kalau real >= ren, merah kalau belum tercapai
   const progressClass = (real: number, plan: number) =>
-    plan > 0 && real < plan
-      ? "text-rose-600 dark:text-rose-400"
-      : "text-emerald-700 dark:text-emerald-300";
+    plan > 0 && real < plan ? "text-rose-400" : "text-emerald-300";
 
   const pctProgress = (real: number, plan: number) =>
     plan > 0 ? ((real / plan) * 100).toFixed(2) : "0.00";
 
   const deltaClass = (real: number, plan: number) => {
     const diff = real - plan;
-    if (diff < 0) return "text-rose-600 dark:text-rose-400";
-    if (diff > 0) return "text-emerald-700 dark:text-emerald-300";
-    return "text-slate-600 dark:text-slate-300";
+    if (diff < 0) return "text-rose-400";
+    if (diff > 0) return "text-emerald-300";
+    return "text-emerald-100/80";
   };
 
   const deltaLabel = (real: number, plan: number) => {
@@ -79,19 +74,16 @@ export default function Ikhtisar({
   };
 
   const ProgressBar = ({ real, plan }: { real: number; plan: number }) => {
-    const pct =
-      plan > 0 ? Math.min((real / plan) * 100, 120) : 0; // allow sedikit >100% untuk over-achieve
-    const barWidth = Math.min(pct, 100); // visual bar max 100%
+    const pct = plan > 0 ? Math.min((real / plan) * 100, 120) : 0;
+    const barWidth = Math.min(pct, 100);
     const isBehind = plan > 0 && real < plan;
 
     return (
-      <div className="w-full mt-1.5 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+      <div className="w-full mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden">
         <div
           className={
             "h-full rounded-full transition-all " +
-            (isBehind
-              ? "bg-rose-500 dark:bg-rose-400"
-              : "bg-emerald-500 dark:bg-emerald-400")
+            (isBehind ? "bg-rose-400" : "bg-emerald-400")
           }
           style={{ width: `${barWidth}%` }}
         />
@@ -99,38 +91,38 @@ export default function Ikhtisar({
     );
   };
 
-  // helper render kartu TM / TBM / Bibitan
   const renderScopeCard = (
     shortLabel: string,
     longLabel: string,
     plan: number,
-    real: number,
+    real: number
   ) => (
-    <Card className="h-full rounded-2xl shadow-sm hover:shadow-md transition-shadow bg-white/80 dark:bg-slate-900/70 ring-1 ring-slate-200/70 dark:ring-slate-800">
-      <CardContent className="pt-4 pb-3 px-4 space-y-3">
+    <Card className="rounded-2xl glass-surface overflow-visible hover:shadow-[0_22px_55px_rgba(3,18,9,0.9)] transition-shadow">
+      {/* padding kanan sedikit lebih besar supaya angka tidak mepet */}
+      <CardContent className="pt-4 pb-4 px-5 space-y-3 overflow-visible">
         <div>
-          <div className="text-xs font-semibold text-slate-700 dark:text-slate-100">
+          <div className="text-xs font-semibold text-emerald-50/95">
             {shortLabel}
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-[11px] text-emerald-100/75 mt-0.5">
             {longLabel}
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="space-y-0.5">
-            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="text-[11px] text-emerald-100/75">
               Rencana (Kg)
             </div>
-            <div className="font-semibold text-slate-800 dark:text-slate-100">
+            <div className="font-semibold text-emerald-50/95 break-words">
               {num(plan)}
             </div>
           </div>
           <div className="space-y-0.5 text-right">
-            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="text-[11px] text-emerald-100/75">
               Realisasi (Kg)
             </div>
-            <div className="font-semibold text-slate-800 dark:text-slate-100">
+            <div className="font-semibold text-emerald-50/95 break-words">
               {num(real)}
             </div>
           </div>
@@ -180,13 +172,13 @@ export default function Ikhtisar({
           "TM",
           "Tanaman Menghasilkan (TM)",
           tmRencana,
-          tmRealisasi,
+          tmRealisasi
         )}
         {renderScopeCard(
           "TBM",
           "Tanaman Belum Menghasilkan (TBM)",
           tbmRencana,
-          tbmRealisasi,
+          tbmRealisasi
         )}
         {renderScopeCard("Bibitan", "Bibitan", bibRencana, bibRealisasi)}
       </div>
@@ -199,34 +191,45 @@ export default function Ikhtisar({
       >
         {/* Total Rencana */}
         <Card className={kpiCardCx}>
-          <CardContent className="pt-4 pb-3">
-            <StatLine label="Total Rencana (Kg)" value={num(totalRencana)} />
+          <CardContent className="flex flex-col justify-center items-center py-6 px-4 min-h-[140px]">
+            <div className="text-[11px] text-emerald-100/75 text-center mb-1">
+              Total Rencana (Kg)
+            </div>
+            <div className="text-xl font-bold text-emerald-50/95 text-center break-words">
+              {num(totalRencana)}
+            </div>
           </CardContent>
         </Card>
 
         {/* Total Realisasi */}
         <Card className={kpiCardCx}>
-          <CardContent className="pt-4 pb-3">
-            <StatLine
-              label="Total Realisasi (Kg)"
-              value={num(totalRealisasi)}
-            />
+          <CardContent className="flex flex-col justify-center items-center py-6 px-4 min-h-[140px]">
+            <div className="text-[11px] text-emerald-100/75 text-center mb-1">
+              Total Realisasi (Kg)
+            </div>
+            <div className="text-xl font-bold text-emerald-50/95 text-center break-words">
+              {num(totalRealisasi)}
+            </div>
           </CardContent>
         </Card>
 
-        {/* DTM card dengan progress & delta */}
+        {/* DTM */}
         <Card className={kpiCardCx}>
-          <CardContent className="pt-4 pb-3 space-y-1.5">
-            <div className="text-[11px] font-medium text-slate-500 mb-1">
+          <CardContent className="pt-4 pb-4 px-5 space-y-1.5 min-h-[140px] overflow-visible">
+            <div className="text-[11px] font-medium text-emerald-100/80 mb-1">
               DTM (Real / Ren)
             </div>
-            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+            <div className="flex items-center justify-between text-xs text-emerald-100/80">
               <span>Realisasi</span>
-              <span className="font-medium">{num(dtmRealisasi)} Kg</span>
+              <span className="font-medium break-words">
+                {num(dtmRealisasi)} Kg
+              </span>
             </div>
-            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+            <div className="flex items-center justify-between text-xs text-emerald-100/80">
               <span>Rencana</span>
-              <span className="font-medium">{num(dtmRencana)} Kg</span>
+              <span className="font-medium break-words">
+                {num(dtmRencana)} Kg
+              </span>
             </div>
 
             <ProgressBar real={dtmRealisasi} plan={dtmRencana} />
@@ -238,7 +241,7 @@ export default function Ikhtisar({
               }
             >
               <span>Selisih</span>
-              <span className="font-semibold">
+              <span className="font-semibold break-words">
                 {formatDelta(dtmRealisasi, dtmRencana)}
               </span>
             </div>
@@ -252,19 +255,23 @@ export default function Ikhtisar({
           </CardContent>
         </Card>
 
-        {/* DBR card dengan progress & delta */}
+        {/* DBR */}
         <Card className={kpiCardCx}>
-          <CardContent className="pt-4 pb-3 space-y-1.5">
-            <div className="text-[11px] font-medium text-slate-500 mb-1">
+          <CardContent className="pt-4 pb-4 px-5 space-y-1.5 min-h-[140px] overflow-visible">
+            <div className="text-[11px] font-medium text-emerald-100/80 mb-1">
               DBR (Real / Ren)
             </div>
-            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+            <div className="flex items-center justify-between text-xs text-emerald-100/80">
               <span>Realisasi</span>
-              <span className="font-medium">{num(dbrRealisasi)} Kg</span>
+              <span className="font-medium break-words">
+                {num(dbrRealisasi)} Kg
+              </span>
             </div>
-            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+            <div className="flex items-center justify-between text-xs text-emerald-100/80">
               <span>Rencana</span>
-              <span className="font-medium">{num(dbrRencana)} Kg</span>
+              <span className="font-medium break-words">
+                {num(dbrRencana)} Kg
+              </span>
             </div>
 
             <ProgressBar real={dbrRealisasi} plan={dbrRencana} />
@@ -276,7 +283,7 @@ export default function Ikhtisar({
               }
             >
               <span>Selisih</span>
-              <span className="font-semibold">
+              <span className="font-semibold break-words">
                 {formatDelta(dbrRealisasi, dbrRencana)}
               </span>
             </div>

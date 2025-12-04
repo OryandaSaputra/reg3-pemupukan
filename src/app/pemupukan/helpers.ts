@@ -2,6 +2,7 @@
 import { prisma } from "@/lib/prisma";
 import { KategoriTanaman } from "@prisma/client";
 import type { TmRow } from "./sections/Visualisasi";
+import { unstable_cache } from "next/cache";
 
 // hitung total kg untuk range tanggal tertentu
 function sumKg(
@@ -29,7 +30,9 @@ function getFiveDayWindow(base: Date) {
   return { start, end };
 }
 
-export async function buildTmRowsFromDb(
+// ===================== IMPLEMENTASI ASLI (TIDAK DIUBAH) =====================
+
+async function buildTmRowsFromDbImpl(
   kategori: KategoriTanaman,
   today = new Date()
 ): Promise<TmRow[]> {
@@ -86,23 +89,13 @@ export async function buildTmRowsFromDb(
     const app3_pct = app3_rencana > 0 ? (app3_real / app3_rencana) * 100 : 0;
 
     // Rencana / Real hari ini
-    const renc_sekarang = sumKg(
-      rencana,
-      kebun,
-      1,
-      todayKey,
-      todayKey
-    ) +
+    const renc_sekarang =
+      sumKg(rencana, kebun, 1, todayKey, todayKey) +
       sumKg(rencana, kebun, 2, todayKey, todayKey) +
       sumKg(rencana, kebun, 3, todayKey, todayKey);
 
-    const real_sekarang = sumKg(
-      realisasi,
-      kebun,
-      1,
-      todayKey,
-      todayKey
-    ) +
+    const real_sekarang =
+      sumKg(realisasi, kebun, 1, todayKey, todayKey) +
       sumKg(realisasi, kebun, 2, todayKey, todayKey) +
       sumKg(realisasi, kebun, 3, todayKey, todayKey);
 
@@ -151,3 +144,19 @@ export async function buildTmRowsFromDb(
 
   return rows;
 }
+
+// ===================== WRAPPER CACHED (API TETAP SAMA) =====================
+
+export const buildTmRowsFromDb = unstable_cache(
+  async (
+    kategori: KategoriTanaman,
+    today: Date = new Date()
+  ): Promise<TmRow[]> => {
+    return buildTmRowsFromDbImpl(kategori, today);
+  },
+  ["pemupukan:helpers:buildTmRowsFromDb"],
+  {
+    // contoh: cache 5 menit; bisa diubah sesuai kebutuhan
+    revalidate: 300,
+  }
+);

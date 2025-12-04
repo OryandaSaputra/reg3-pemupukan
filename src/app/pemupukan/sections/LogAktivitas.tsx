@@ -27,28 +27,73 @@ type GroupedLog = {
 
 type FilterType = "ALL" | "Rencana" | "Realisasi";
 
+/* ========================= CLIENT LOG CACHE ========================= */
+
+type LogCacheEntry = {
+  items: LogItem[];
+  ts: number;
+};
+
+const LOG_CACHE_TTL = 60_000; // 60 detik
+let logCache: LogCacheEntry | null = null;
+
 export default function LogAktivitas() {
   const [items, setItems] = useState<LogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>("ALL");
 
   useEffect(() => {
+    const controller = new AbortController();
     let active = true;
-    (async () => {
+
+    async function loadLogs() {
       try {
-        const res = await fetch("/api/pemupukan/log-aktivitas?limit=20");
+        setLoading(true);
+
+        const now = Date.now();
+
+        // 1) Cek cache lokal dulu
+        if (logCache && now - logCache.ts < LOG_CACHE_TTL) {
+          if (!active) return;
+          setItems(logCache.items);
+          setLoading(false);
+          return;
+        }
+
+        // 2) Kalau cache kosong/expired → fetch ke API
+        const res = await fetch("/api/pemupukan/log-aktivitas?limit=20", {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error("Gagal fetch log");
         const json = await res.json();
+
         if (!active) return;
-        setItems(json.items ?? []);
+
+        const newItems: LogItem[] = json.items ?? [];
+
+        // simpan ke cache
+        logCache = {
+          items: newItems,
+          ts: Date.now(),
+        };
+
+        setItems(newItems);
       } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          // request dibatalkan, abaikan
+          return;
+        }
         console.error(e);
       } finally {
         if (active) setLoading(false);
       }
-    })();
+    }
+
+    loadLogs();
+
     return () => {
       active = false;
+      controller.abort();
     };
   }, []);
 
@@ -127,28 +172,29 @@ export default function LogAktivitas() {
         desc="Jejak perubahan terbaru pada data Rencana & Realisasi"
       />
 
-      <Card className="shadow-md border-emerald-300 bg-gradient-to-br from-white via-emerald-50 to-emerald-100">
+      <Card className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.85)]">
         <CardHeader className="flex flex-col gap-3 pb-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle className="text-sm font-semibold text-slate-900">
+            <CardTitle className="text-sm font-semibold text-emerald-50/95">
               Aktivitas Terbaru
             </CardTitle>
-            <p className="mt-0.5 text-[11px] text-slate-600">
-              Menampilkan maksimal 20 aktivitas terakhir, dapat difilter berdasarkan sumber.
+            <p className="mt-0.5 text-[11px] text-emerald-100/80">
+              Menampilkan maksimal 20 aktivitas terakhir, dapat difilter
+              berdasarkan sumber.
             </p>
           </div>
 
           <div className="flex flex-col items-stretch gap-2 md:items-end">
             {/* Filter chips */}
-            <div className="inline-flex items-center rounded-full bg-white p-1 shadow ring-1 ring-emerald-300">
+            <div className="inline-flex items-center rounded-full bg-emerald-950/50 px-1 py-1 shadow-[0_0_0_1px_rgba(16,185,129,0.4)] ring-1 ring-emerald-500/50">
               <button
                 type="button"
                 onClick={() => setFilter("ALL")}
                 className={
                   "px-3 py-1 text-[10px] font-medium rounded-full transition-colors " +
                   (filter === "ALL"
-                    ? "bg-blue-600 text-white shadow"
-                    : "text-slate-700 hover:bg-blue-100")
+                    ? "bg-emerald-500 text-emerald-950 shadow-md"
+                    : "text-emerald-100 hover:bg-emerald-900/70")
                 }
               >
                 Semua
@@ -159,8 +205,8 @@ export default function LogAktivitas() {
                 className={
                   "px-3 py-1 text-[10px] font-medium rounded-full transition-colors " +
                   (filter === "Rencana"
-                    ? "bg-orange-600 text-white shadow"
-                    : "text-slate-700 hover:bg-orange-100")
+                    ? "bg-orange-500 text-slate-950 shadow-md"
+                    : "text-emerald-100 hover:bg-emerald-900/70")
                 }
               >
                 Rencana
@@ -171,8 +217,8 @@ export default function LogAktivitas() {
                 className={
                   "px-3 py-1 text-[10px] font-medium rounded-full transition-colors " +
                   (filter === "Realisasi"
-                    ? "bg-green-600 text-white shadow"
-                    : "text-slate-700 hover:bg-emerald-100")
+                    ? "bg-emerald-400 text-emerald-950 shadow-md"
+                    : "text-emerald-100 hover:bg-emerald-900/70")
                 }
               >
                 Realisasi
@@ -180,12 +226,12 @@ export default function LogAktivitas() {
             </div>
 
             {/* Info terakhir diperbarui */}
-            <div className="flex flex-col items-end gap-1 text-[10px] text-slate-600">
+            <div className="flex flex-col items-end gap-1 text-[10px] text-emerald-100/70">
               <div className="flex items-center gap-1.5">
-                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(34,197,94,0.45)] animate-pulse" />
+                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_4px_rgba(74,222,128,0.4)] animate-pulse" />
                 <span>Terakhir diperbarui:</span>
               </div>
-              <span className="font-semibold text-slate-800">
+              <span className="font-semibold text-emerald-50">
                 {lastUpdated ? formatTanggal(lastUpdated) : "-"}
               </span>
             </div>
@@ -194,16 +240,16 @@ export default function LogAktivitas() {
 
         <CardContent className="pt-0">
           {loading ? (
-            <div className="flex items-center justify-center py-10 text-xs text-slate-600 gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
+            <div className="flex items-center justify-center gap-2 py-10 text-xs text-emerald-100/80">
+              <Loader2 className="h-4 w-4 animate-spin" />
               Memuat log aktivitas...
             </div>
           ) : items.length === 0 ? (
-            <div className="py-8 text-xs text-center text-slate-600">
+            <div className="py-8 text-center text-xs text-emerald-100/80">
               Belum ada aktivitas terbaru.
             </div>
           ) : filteredItems.length === 0 ? (
-            <div className="py-8 text-xs text-center text-slate-600">
+            <div className="py-8 text-center text-xs text-emerald-100/80">
               Tidak ada aktivitas untuk filter{" "}
               <span className="font-semibold">
                 {filter === "ALL" ? "Semua" : filter}
@@ -211,36 +257,34 @@ export default function LogAktivitas() {
               .
             </div>
           ) : (
-            <div className="max-h-80 pr-1.5 overflow-y-auto">
+            <div className="max-h-80 overflow-y-auto pr-1.5">
               {grouped.map((group) => (
                 <div key={group.dateKey} className="pb-4 last:pb-1">
                   {/* Header tanggal (sticky di dalam scroll) */}
-                  <div className="sticky top-0 z-10 mb-2 flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-200 to-emerald-100 px-2 py-1.5 text-[11px] shadow-[0_6px_15px_rgba(15,23,42,0.18)] backdrop-blur">
-                    <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-700" />
-                    <span className="font-semibold text-slate-900">
-                      {group.label}
-                    </span>
-                    <span className="text-[10px] text-slate-700">
+                  <div className="sticky top-0 z-10 mb-2 flex items-center gap-2 rounded-xl border border-[--glass-border] bg-gradient-to-r from-emerald-950/85 to-emerald-900/85 px-2 py-1.5 text-[11px] text-emerald-50 shadow-[0_10px_25px_rgba(2,6,23,0.8)] backdrop-blur">
+                    <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    <span className="font-semibold">{group.label}</span>
+                    <span className="text-[10px] text-emerald-100/80">
                       ({group.items.length} aktivitas)
                     </span>
                   </div>
 
                   {/* Timeline untuk tanggal ini */}
-                  <ul className="relative space-y-3 before:absolute before:left-[11px] before:top-1 before:h-[calc(100%-0.5rem)] before:w-px before:bg-emerald-300">
+                  <ul className="relative space-y-3 before:absolute before:left-[11px] before:top-1 before:h-[calc(100%-0.5rem)] before:w-px before:bg-emerald-500/50">
                     {group.items.map((item) => (
                       <li key={item.id} className="relative pl-6">
                         {/* Titik timeline */}
                         <span
                           className={
-                            "absolute left-[7px] top-3 h-3 w-3 rounded-full border-2 border-slate-700 shadow " +
+                            "absolute left-[7px] top-3 h-3 w-3 rounded-full border-2 shadow " +
                             (item.sumber === "Rencana"
-                              ? "bg-orange-500"
-                              : "bg-green-500")
+                              ? "border-emerald-900 bg-orange-400"
+                              : "border-emerald-900 bg-emerald-400")
                           }
                         />
 
                         {/* Kartu aktivitas */}
-                        <div className="flex flex-col gap-1.5 rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 shadow-md transition-shadow hover:shadow-xl">
+                        <div className="flex flex-col gap-1.5 rounded-2xl border border-[--glass-border] bg-emerald-950/80 px-3.5 py-2.5 text-emerald-50 shadow-[0_10px_25px_rgba(2,6,23,0.9)] transition-shadow hover:shadow-[0_18px_40px_rgba(2,6,23,1)]">
                           <div className="flex items-start justify-between gap-3">
                             <div className="space-y-1.5">
                               <div className="flex flex-wrap items-center gap-1.5">
@@ -249,26 +293,26 @@ export default function LogAktivitas() {
                                   className={
                                     "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium " +
                                     (item.sumber === "Rencana"
-                                      ? "border-orange-300 bg-orange-50 text-orange-700"
-                                      : "border-emerald-300 bg-emerald-50 text-emerald-700")
+                                      ? "border-orange-300/80 bg-orange-500/15 text-orange-200"
+                                      : "border-emerald-300/80 bg-emerald-500/15 text-emerald-200")
                                   }
                                 >
                                   {item.sumber}
                                 </span>
 
                                 {/* Jenis pupuk + aplikasi */}
-                                <span className="text-[11px] font-semibold text-slate-900">
+                                <span className="text-[11px] font-semibold text-emerald-50">
                                   {item.jenisPupuk} • Apl-{item.aplikasiKe}
                                 </span>
                               </div>
 
                               {/* AKTIVITAS / AKSI */}
-                              <p className="text-[11px] italic text-slate-700">
+                              <p className="text-[11px] italic text-emerald-100/85">
                                 {item.aksi}
                               </p>
 
                               {/* Lokasi */}
-                              <p className="text-[11px] text-slate-700">
+                              <p className="text-[11px] text-emerald-100/85">
                                 Kebun{" "}
                                 <span className="font-semibold">
                                   {item.kebun}
@@ -285,16 +329,16 @@ export default function LogAktivitas() {
                             </div>
 
                             {/* Waktu update */}
-                            <span className="mt-0.5 whitespace-nowrap text-[10px] text-slate-500">
+                            <span className="mt-0.5 whitespace-nowrap text-[10px] text-emerald-200/80">
                               {formatTanggal(item.updatedAt)}
                             </span>
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-700">
-                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-emerald-100/85">
+                            <span className="inline-flex items-center rounded-full border border-emerald-400/70 bg-emerald-500/15 px-2 py-0.5 font-semibold text-emerald-100">
                               {item.kgPupuk.toLocaleString("id-ID")} Kg
                             </span>
-                            <span className="hidden text-slate-400 md:inline">
+                            <span className="hidden text-emerald-400/70 md:inline">
                               •
                             </span>
                             <span>

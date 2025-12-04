@@ -5,6 +5,7 @@ import { Prisma, KategoriTanaman } from "@prisma/client";
 import { parseTanggalIsoJakarta } from "@/app/pemupukan/dateHelpers";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth.config";
+import { unstable_cache, revalidateTag } from "next/cache";
 
 const MAX_ROWS_PER_UPLOAD = 10000;
 
@@ -82,7 +83,7 @@ function mapIncomingRow(
   const kategoriRaw = (row.kategori ?? "").toString().trim().toUpperCase();
   let kategori: KategoriTanaman;
   if (kategoriRaw === "TM" || kategoriRaw === "TBM" || kategoriRaw === "BIBITAN") {
-    kategori = kategoriRaw;
+    kategori = kategoriRaw as KategoriTanaman;
   } else {
     return { ok: false, error: `Kategori tidak valid: ${row.kategori}` };
   }
@@ -133,6 +134,141 @@ async function requireAuth() {
 }
 
 /* ======================================================================= */
+/*                        GET HELPER + SERVER CACHE                        */
+/* ======================================================================= */
+
+type GetParams = {
+  pageParam: string | null;
+  pageSizeParam: string | null;
+  kebunParam: string | null;
+  kategoriParam: string | null;
+  tahunParam: string | null;
+  dateFromParam: string | null;
+  dateToParam: string | null;
+  searchTerm: string | null;
+  hasAdvancedParams: boolean;
+};
+
+async function getRealisasiDataImpl(params: GetParams) {
+  const {
+    pageParam,
+    pageSizeParam,
+    kebunParam,
+    kategoriParam,
+    tahunParam,
+    dateFromParam,
+    dateToParam,
+    searchTerm,
+    hasAdvancedParams,
+  } = params;
+
+  // MODE LAMA: tanpa query param → kembalikan semua data (backward compatible)
+  if (!hasAdvancedParams) {
+    const data = await prisma.realisasiPemupukan.findMany({
+      orderBy: [{ tanggal: "asc" }, { kebun: "asc" }, { afd: "asc" }],
+    });
+
+    return data;
+  }
+
+  // MODE BARU: dengan pagination & filter
+  const page = Math.max(parseInt(pageParam || "1", 10) || 1, 1);
+  const rawPageSize = parseInt(pageSizeParam || "200", 10) || 200;
+  const pageSize = Math.min(Math.max(rawPageSize, 10), 1000);
+
+  const where: Prisma.RealisasiPemupukanWhereInput = {};
+
+  if (kebunParam) {
+    where.kebun = kebunParam;
+  }
+
+  if (kategoriParam) {
+    where.kategori = kategoriParam as KategoriTanaman;
+  }
+
+  // Filter tanggal: kalau ada dateFrom/dateTo → pakai itu;
+  // kalau tidak ada tapi ada "tahun" → pakai range 1 Jan s/d 1 Jan tahun berikutnya.
+  let tanggalFilter: Prisma.DateTimeFilter | undefined;
+
+  const fromDate = parseDateOnly(dateFromParam);
+  const toDate = parseDateOnly(dateToParam);
+
+  if (fromDate || toDate) {
+    tanggalFilter = {};
+    if (fromDate) {
+      tanggalFilter.gte = fromDate;
+    }
+    if (toDate) {
+      const end = new Date(toDate);
+      end.setDate(end.getDate() + 1); // lt hari berikutnya → inclusive
+      tanggalFilter.lt = end;
+    }
+  } else if (tahunParam) {
+    const year = Number(tahunParam);
+    if (Number.isFinite(year)) {
+      const from = new Date(year, 0, 1);
+      const to = new Date(year + 1, 0, 1);
+      tanggalFilter = {
+        gte: from,
+        lt: to,
+      };
+    }
+  }
+
+  if (tanggalFilter) {
+    where.tanggal = tanggalFilter;
+  }
+
+  // Text search sederhana
+  if (searchTerm && searchTerm.trim() !== "") {
+    const term = searchTerm.trim();
+    where.OR = [
+      { kebun: { contains: term } },
+      { kodeKebun: { contains: term } },
+      { afd: { contains: term } },
+      { tt: { contains: term } },
+      { blok: { contains: term } },
+      { jenisPupuk: { contains: term } },
+      { kategori: { equals: term.toUpperCase() as KategoriTanaman } },
+    ];
+  }
+
+  const skip = (page - 1) * pageSize;
+
+  const [data, total] = await Promise.all([
+    prisma.realisasiPemupukan.findMany({
+      where,
+      // Untuk riwayat biasanya lebih enak terbaru dulu
+      orderBy: [{ tanggal: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+      skip,
+      take: pageSize,
+    }),
+    prisma.realisasiPemupukan.count({ where }),
+  ]);
+
+  return {
+    data,
+    meta: {
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  };
+}
+
+const getRealisasiDataCached = unstable_cache(
+  async (params: GetParams) => {
+    return getRealisasiDataImpl(params);
+  },
+  ["pemupukan:realisasi:get"],
+  {
+    revalidate: 300, // cache 5 menit
+    tags: ["pemupukan:realisasi"],
+  }
+);
+
+/* ======================================================================= */
 /*                                  GET                                    */
 /* ======================================================================= */
 
@@ -165,97 +301,24 @@ export async function GET(req: Request) {
       dateToParam ||
       searchTerm;
 
-    // MODE LAMA: tanpa query param → kembalikan semua data (backward compatible)
-    if (!hasAdvancedParams) {
-      const data = await prisma.realisasiPemupukan.findMany({
-        orderBy: [{ tanggal: "asc" }, { kebun: "asc" }, { afd: "asc" }],
-      });
+    const params: GetParams = {
+      pageParam,
+      pageSizeParam,
+      kebunParam,
+      kategoriParam,
+      tahunParam,
+      dateFromParam,
+      dateToParam,
+      searchTerm,
+      hasAdvancedParams: Boolean(hasAdvancedParams),
+    };
 
-      return NextResponse.json(data);
-    }
+    const result = await getRealisasiDataCached(params);
 
-    // MODE BARU: dengan pagination & filter
-    const page = Math.max(parseInt(pageParam || "1", 10) || 1, 1);
-    const rawPageSize = parseInt(pageSizeParam || "200", 10) || 200;
-    const pageSize = Math.min(Math.max(rawPageSize, 10), 1000);
-
-    const where: Prisma.RealisasiPemupukanWhereInput = {};
-
-    if (kebunParam) {
-      where.kebun = kebunParam;
-    }
-
-    if (kategoriParam) {
-      where.kategori = kategoriParam as KategoriTanaman;
-    }
-
-    // Filter tanggal: kalau ada dateFrom/dateTo → pakai itu;
-    // kalau tidak ada tapi ada "tahun" → pakai range 1 Jan s/d 1 Jan tahun berikutnya.
-    let tanggalFilter: Prisma.DateTimeFilter | undefined;
-
-    const fromDate = parseDateOnly(dateFromParam);
-    const toDate = parseDateOnly(dateToParam);
-
-    if (fromDate || toDate) {
-      tanggalFilter = {};
-      if (fromDate) {
-        tanggalFilter.gte = fromDate;
-      }
-      if (toDate) {
-        const end = new Date(toDate);
-        end.setDate(end.getDate() + 1); // lt hari berikutnya → inclusive
-        tanggalFilter.lt = end;
-      }
-    } else if (tahunParam) {
-      const year = Number(tahunParam);
-      if (Number.isFinite(year)) {
-        const from = new Date(year, 0, 1);
-        const to = new Date(year + 1, 0, 1);
-        tanggalFilter = {
-          gte: from,
-          lt: to,
-        };
-      }
-    }
-
-    if (tanggalFilter) {
-      where.tanggal = tanggalFilter;
-    }
-
-    // Text search sederhana
-    if (searchTerm && searchTerm.trim() !== "") {
-      const term = searchTerm.trim();
-      where.OR = [
-        { kebun: { contains: term } },
-        { kodeKebun: { contains: term } },
-        { afd: { contains: term } },
-        { tt: { contains: term } },
-        { blok: { contains: term } },
-        { jenisPupuk: { contains: term } },
-        { kategori: { equals: term.toUpperCase() as KategoriTanaman } },
-      ];
-    }
-
-    const skip = (page - 1) * pageSize;
-
-    const [data, total] = await Promise.all([
-      prisma.realisasiPemupukan.findMany({
-        where,
-        // Untuk riwayat biasanya lebih enak terbaru dulu
-        orderBy: [{ tanggal: "desc" }, { createdAt: "desc" }, { id: "desc" }],
-        skip,
-        take: pageSize,
-      }),
-      prisma.realisasiPemupukan.count({ where }),
-    ]);
-
-    return NextResponse.json({
-      data,
-      meta: {
-        page,
-        pageSize,
-        total,
-        totalPages: Math.ceil(total / pageSize),
+    return NextResponse.json(result, {
+      headers: {
+        "Cache-Control":
+          "public, max-age=60, s-maxage=300, stale-while-revalidate=600",
       },
     });
   } catch (err: unknown) {
@@ -347,6 +410,11 @@ export async function POST(req: Request) {
       }),
     ]);
 
+    // Invalidate cache terkait realisasi + meta + log aktivitas
+    revalidateTag("pemupukan:realisasi");
+    revalidateTag("pemupukan:meta");
+    revalidateTag("pemupukan:log-aktivitas");
+
     return NextResponse.json(
       {
         message: "Data realisasi berhasil disimpan (replace).",
@@ -398,6 +466,11 @@ export async function PUT(req: Request) {
       data: mapped.data as Prisma.RealisasiPemupukanUpdateInput,
     });
 
+    // Invalidate cache terkait realisasi + meta + log aktivitas
+    revalidateTag("pemupukan:realisasi");
+    revalidateTag("pemupukan:meta");
+    revalidateTag("pemupukan:log-aktivitas");
+
     return NextResponse.json(updated);
   } catch (err: unknown) {
     console.error("PUT /api/pemupukan/realisasi error", err);
@@ -429,6 +502,11 @@ export async function DELETE(req: Request) {
     // 1) Hapus semua data (dipakai di RealisasiRiwayat: handleDeleteAll)
     if (allFlag === "1") {
       const result = await prisma.realisasiPemupukan.deleteMany({});
+
+      revalidateTag("pemupukan:realisasi");
+      revalidateTag("pemupukan:meta");
+      revalidateTag("pemupukan:log-aktivitas");
+
       return NextResponse.json(
         {
           message: "Semua data realisasi berhasil dihapus.",
@@ -443,6 +521,10 @@ export async function DELETE(req: Request) {
       const result = await prisma.realisasiPemupukan.deleteMany({
         where: { kebun: kebunParam },
       });
+
+      revalidateTag("pemupukan:realisasi");
+      revalidateTag("pemupukan:meta");
+      revalidateTag("pemupukan:log-aktivitas");
 
       return NextResponse.json(
         {
@@ -487,6 +569,10 @@ export async function DELETE(req: Request) {
     await prisma.realisasiPemupukan.delete({
       where: { id },
     });
+
+    revalidateTag("pemupukan:realisasi");
+    revalidateTag("pemupukan:meta");
+    revalidateTag("pemupukan:log-aktivitas");
 
     return NextResponse.json(
       { message: "Data realisasi berhasil dihapus.", id },

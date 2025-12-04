@@ -82,6 +82,8 @@ export default function LoginClient() {
       <div
         className="pointer-events-none fixed inset-0 -z-20"
         style={{
+          backgroundImage:
+            "radial-gradient(circle at 0% 0%, rgba(16,185,129,0.35), transparent 55%), radial-gradient(circle at 100% 100%, rgba(21,128,61,0.45), transparent 55%)",
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundAttachment: "fixed",
@@ -91,10 +93,10 @@ export default function LoginClient() {
       />
 
       {/* Overlay gradient */}
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-br from-emerald-900/80 via-emerald-900/60 to-emerald-950/90" />
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-br from-emerald-950/95 via-emerald-900/85 to-slate-950" />
 
       {/* Main content */}
-      <div className="min-h-screen w-full flex items-center justify-center px-4 py-10">
+      <div className="flex min-h-screen w-full items-center justify-center px-4 py-10">
         <motion.div
           className="w-full max-w-5xl"
           initial={{ opacity: 0, y: 35 }}
@@ -102,20 +104,20 @@ export default function LoginClient() {
           transition={{ duration: 0.55, ease: "easeOut" }}
         >
           <motion.div
-            className="grid grid-cols-1 md:grid-cols-2 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-950/40 bg-emerald-900/60 border border-emerald-700/40 backdrop-blur-sm"
+            className="grid grid-cols-1 overflow-hidden rounded-3xl border border-emerald-700/40 bg-emerald-900/70 shadow-2xl shadow-emerald-950/50 backdrop-blur-md md:grid-cols-2"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15, duration: 0.5 }}
           >
             {/* Kiri: info sistem */}
-            <div className="hidden md:flex flex-col justify-between px-10 py-10 text-emerald-50 bg-emerald-900/90">
+            <div className="hidden flex-col justify-between bg-emerald-950/70 px-10 py-10 text-emerald-50 md:flex">
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.25, duration: 0.45 }}
               >
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="relative h-10 w-10 rounded-2xl bg-white flex items-center justify-center shadow-lg shadow-emerald-900/60 overflow-hidden">
+                <div className="mb-6 flex items-center gap-3">
+                  <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-emerald-900/70">
                     <Image
                       src="https://www.ptpn4.co.id/build/assets/Logo%20PTPN%20IV-CyWK9qsP.png"
                       alt="PTPN 4"
@@ -124,22 +126,22 @@ export default function LoginClient() {
                       className="object-contain p-1"
                     />
                   </div>
-                  <span className="text-xs tracking-[0.25em] uppercase">
+                  <span className="text-xs uppercase tracking-[0.25em] text-emerald-100/90">
                     PTPN 4 • DIVISI TANAMAN
                   </span>
                 </div>
 
-                <h1 className="text-3xl font-semibold leading-tight mb-2">
+                <h1 className="mb-2 text-3xl font-semibold leading-tight">
                   Dashboard Pemupukan
                 </h1>
-                <h2 className="text-2xl font-semibold text-emerald-300 mb-6">
+                <h2 className="mb-6 text-2xl font-semibold text-emerald-300">
                   PTPN 4 Regional III
                 </h2>
 
-                <p className="text-sm text-emerald-100/80 mb-6 max-w-md">
-                  Akses terpusat untuk memantau rencana dan realisasi pemupukan,
-                  analisis progres per kebun, serta laporan pendukung keputusan
-                  Divisi Tanaman.
+                <p className="mb-6 max-w-md text-sm text-emerald-100/80">
+                  Akses terpusat untuk memantau rencana dan realisasi
+                  pemupukan, analisis progres per kebun, serta laporan
+                  pendukung keputusan Divisi Tanaman.
                 </p>
 
                 <ul className="space-y-3 text-sm">
@@ -153,9 +155,12 @@ export default function LoginClient() {
                       className="flex items-start gap-3"
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.35 + i * 0.08, duration: 0.4 }}
+                      transition={{
+                        delay: 0.35 + i * 0.08,
+                        duration: 0.4,
+                      }}
                     >
-                      <span className="mt-1 h-5 w-5 rounded-full bg-emerald-500/20 border border-emerald-400/60 flex items-center justify-center text-[10px]">
+                      <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full border border-emerald-400/70 bg-emerald-500/25 text-[10px]">
                         ✓
                       </span>
                       <span>{text}</span>
@@ -170,37 +175,38 @@ export default function LoginClient() {
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.6, duration: 0.6 }}
               >
-                © {new Date().getFullYear()} PTPN 4 • Dashboard Pemupukan Divisi
-                Tanaman
+                © {new Date().getFullYear()} PTPN 4 • Dashboard Pemupukan
+                Divisi Tanaman
               </motion.p>
             </div>
 
             {/* Kanan: form login */}
             <motion.div
-              className="bg-white rounded-l-3xl md:rounded-l-none px-8 sm:px-10 py-10 flex flex-col justify-center"
+              className="flex flex-col justify-center bg-slate-950/90 px-8 py-10 text-slate-50 sm:px-10 md:rounded-l-none"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.55 }}
             >
               <div className="mb-8">
                 {/* Logo kecil utk mobile */}
-                <div className="flex items-center gap-2 mb-2 md:hidden">
-                  <div className="relative h-8 w-8 rounded-2xl bg-white flex items-center justify-center shadow-md shadow-emerald-900/40 overflow-hidden">
+                <div className="mb-2 flex items-center gap-2 md:hidden">
+                  <div className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-md shadow-emerald-900/50">
                     <Image
-                      src="/ptpn4-logo.png"
+                      src="https://www.ptpn4.co.id/build/assets/Logo%20PTPN%20IV-CyWK9qsP.png"
                       alt="PTPN 4"
                       fill
+                      unoptimized
                       className="object-contain p-1"
                     />
                   </div>
-                  <span className="text-[11px] tracking-[0.25em] uppercase text-emerald-700">
+                  <span className="text-[11px] uppercase tracking-[0.25em] text-emerald-300">
                     PTPN 4 • DIVISI TANAMAN
                   </span>
                 </div>
-                <h2 className="text-xl sm:text-2xl font-semibold text-emerald-950">
+                <h2 className="text-xl font-semibold text-emerald-100 sm:text-2xl">
                   Masuk Akun
                 </h2>
-                <p className="text-sm text-slate-500 mt-1">
+                <p className="mt-1 text-sm text-slate-400">
                   Gunakan kredensial yang telah ditetapkan Divisi Tanaman.
                 </p>
               </div>
@@ -208,16 +214,16 @@ export default function LoginClient() {
               <form onSubmit={handleSubmit} className="space-y-5">
                 {/* Username */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-600">
+                  <label className="text-xs font-medium text-slate-300">
                     Username
                   </label>
-                  <div className="relative rounded-xl border border-emerald-200/80 bg-white focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/70 transition-all">
+                  <div className="relative rounded-xl border border-emerald-700/60 bg-slate-900/80 transition-all focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-500/70">
                     <input
                       ref={usernameRef}
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none bg-transparent"
+                      className="w-full rounded-xl bg-transparent px-3.5 py-2.5 text-sm text-emerald-50 outline-none placeholder:text-slate-500"
                       placeholder="Masukkan username"
                       autoComplete="username"
                     />
@@ -226,23 +232,23 @@ export default function LoginClient() {
 
                 {/* Password */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-600">
+                  <label className="text-xs font-medium text-slate-300">
                     Password
                   </label>
-                  <div className="relative rounded-xl border border-emerald-200/80 bg-white focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/70 transition-all">
+                  <div className="relative rounded-xl border border-emerald-700/60 bg-slate-900/80 transition-all focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-500/70">
                     <input
                       ref={passwordRef}
                       type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full rounded-xl px-3.5 py-2.5 pr-10 text-sm outline-none bg-transparent"
+                      className="w-full rounded-xl bg-transparent px-3.5 py-2.5 pr-10 text-sm text-emerald-50 outline-none placeholder:text-slate-500"
                       placeholder="Masukkan password"
                       autoComplete="current-password"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((s) => !s)}
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition-colors"
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 transition-colors hover:text-slate-300"
                       tabIndex={-1}
                     >
                       {showPassword ? (
@@ -254,33 +260,18 @@ export default function LoginClient() {
                   </div>
                 </div>
 
-                {/* Remember me */}
-                <div className="flex items-center justify-between text-xs">
-                  <label className="flex items-center gap-2 text-slate-600">
-                    <input
-                      type="checkbox"
-                      checked={remember}
-                      onChange={(e) => setRemember(e.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <span>Ingat saya</span>
-                  </label>
-                  <button
-                    type="button"
-                    className="text-emerald-600 hover:text-emerald-700 font-medium"
-                  >
-                    Lupa password?
-                  </button>
-                </div>
-
                 {/* Error */}
                 {error && (
                   <motion.p
                     key={error}
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ type: "spring", stiffness: 500, damping: 24 }}
-                    className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2"
+                    transition={{
+                      type: "spring",
+                      stiffness: 500,
+                      damping: 24,
+                    }}
+                    className="rounded-lg border border-red-500/40 bg-red-900/40 px-3 py-2 text-xs text-red-100"
                   >
                     {error}
                   </motion.p>
@@ -290,7 +281,7 @@ export default function LoginClient() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="mt-1 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium py-2.5 shadow-lg shadow-emerald-700/40 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500/90 py-2.5 text-sm font-medium text-emerald-950 shadow-[0_12px_30px_rgba(16,185,129,0.55)] transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loading ? "Sedang masuk..." : "Masuk"}
@@ -303,7 +294,7 @@ export default function LoginClient() {
 
       {/* Fullscreen loading ketika submit */}
       {loading && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-emerald-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-emerald-950/85 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -311,8 +302,8 @@ export default function LoginClient() {
             className="flex flex-col items-center gap-4"
           >
             <div className="relative flex items-center justify-center">
-              <div className="h-24 w-24 rounded-full border-2 border-emerald-500/20 border-t-emerald-300/90 animate-spin" />
-              <div className="absolute h-16 w-16 rounded-2xl bg-white flex items-center justify-center shadow-lg shadow-emerald-900/60 overflow-hidden">
+              <div className="h-24 w-24 animate-spin rounded-full border-2 border-emerald-500/20 border-t-emerald-300/90" />
+              <div className="absolute flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-emerald-900/60">
                 <Image
                   src="https://www.ptpn4.co.id/build/assets/Logo%20PTPN%20IV-CyWK9qsP.png"
                   alt="PTPN 4"
@@ -322,8 +313,8 @@ export default function LoginClient() {
                 />
               </div>
             </div>
-            <div className="text-center space-y-1">
-              <p className="text-[11px] font-semibold tracking-[0.25em] uppercase text-emerald-100/90">
+            <div className="space-y-1 text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-emerald-100/90">
                 PTPN 4 • Divisi Tanaman
               </p>
               <p className="text-sm text-emerald-100/80">
