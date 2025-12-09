@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useMemo, useState, useRef } from "react";
-import SectionHeader from "../components/SectionHeader";
+import React, { useMemo, useState } from "react";
+import SectionHeader from "../../shared/SectionHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,10 +12,10 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { KEBUN_LABEL } from "../constants";
+import { KEBUN_LABEL } from "../../../_config/constants";
 import { RefreshCcw, Save, Upload } from "lucide-react";
 import Swal from "sweetalert2";
-import { toIsoDateJakarta } from "../dateHelpers";
+import { toIsoDateJakarta } from "../../../_services/dateHelpers";
 
 type Kategori = "TM" | "TBM" | "BIBITAN" | "";
 
@@ -107,9 +107,9 @@ function findAfter(
 }
 
 export default function RealisasiTambah() {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
+
   const [form, setForm] = useState<FormData>({
     kategori: "",
     kebun: "",
@@ -197,7 +197,8 @@ export default function RealisasiTambah() {
         luas: toNumberLoose(form.luas),
         inv: Math.round(toNumberLoose(form.inv)),
         jenis_pupuk: form.jenisPupuk,
-        aplikasi: Number(toNumberLoose(form.aplikasi)),
+        // default ke 1 kalau kosong/0 supaya konsisten dengan Rencana
+        aplikasi: Number(toNumberLoose(form.aplikasi) || 1),
         dosis: toNumberLoose(form.dosis),
         kg_pupuk: toNumberLoose(form.kgPupuk),
       };
@@ -584,6 +585,11 @@ export default function RealisasiTambah() {
         if (!Number.isFinite(dosisNum)) dosisNum = 0;
         if (!Number.isFinite(kgPupukNum)) kgPupukNum = 0;
 
+        // kalau KG PUPUK kosong → hitung dari INV × DOSIS (mirip Rencana)
+        if (kgPupukNum === 0 && invNum > 0 && dosisNum > 0) {
+          kgPupukNum = invNum * dosisNum;
+        }
+
         // filter: hanya baris yang benar-benar punya data realisasi
         const hasRealData =
           (tanggalFinal && tanggalFinal !== "-") ||
@@ -613,7 +619,8 @@ export default function RealisasiTambah() {
           luas: luasNum,
           inv: Math.round(invNum),
           jenis_pupuk: jenisPupukStr,
-          aplikasi: aplikasiNum,
+          // default ke 1 kalau kosong/0
+          aplikasi: aplikasiNum || 1,
           dosis: dosisNum,
           kg_pupuk: kgPupukNum,
         });
@@ -696,26 +703,29 @@ export default function RealisasiTambah() {
           <CardTitle className="text-[13px]">Formulir Realisasi</CardTitle>
 
           <div className="flex items-center gap-2">
-            {/* input file disembunyikan, dipicu manual dari tombol */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={handleImportExcel}
-            />
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-2 border-emerald-600/70 text-emerald-50 hover:bg-emerald-900/70"
-              disabled={importing}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="h-4 w-4" />
-              {importing ? "Import..." : "Import dari Excel"}
-            </Button>
+            {/* input file disembunyikan, dipicu melalui label + button */}
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleImportExcel}
+                disabled={importing}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2 border-emerald-600/70 text-emerald-50 hover:bg-emerald-900/70"
+                disabled={importing}
+                asChild
+              >
+                <span>
+                  <Upload className="h-4 w-4" />
+                  {importing ? "Import..." : "Import dari Excel"}
+                </span>
+              </Button>
+            </label>
           </div>
         </CardHeader>
 
@@ -735,8 +745,12 @@ export default function RealisasiTambah() {
                     <SelectValue placeholder="Pilih kategori (TM / TBM / BIBITAN)" />
                   </SelectTrigger>
                   <SelectContent className="bg-slate-950 text-emerald-50 border border-emerald-700/70">
-                    <SelectItem value="TM">TM (Tanaman Menghasilkan)</SelectItem>
-                    <SelectItem value="TBM">TBM (Tanaman Belum Menghasilkan)</SelectItem>
+                    <SelectItem value="TM">
+                      TM (Tanaman Menghasilkan)
+                    </SelectItem>
+                    <SelectItem value="TBM">
+                      TBM (Tanaman Belum Menghasilkan)
+                    </SelectItem>
                     <SelectItem value="BIBITAN">BIBITAN</SelectItem>
                   </SelectContent>
                 </Select>

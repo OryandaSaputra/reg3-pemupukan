@@ -1,11 +1,22 @@
 // src/app/api/pemupukan/log-aktivitas/route.ts
+'use server';
+
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/prisma";
 import { unstable_cache } from "next/cache";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/auth.config";
+
+/**
+ * Auth helper simpel supaya log aktivitas tidak bisa diakses sembarang orang.
+ */
+async function requireAuth() {
+  const session = await getServerSession(authOptions);
+  return session;
+}
 
 /**
  * Implementasi asli (dipisah dari GET supaya bisa dibungkus caching).
- * Logika query, mapping, sort, dan konversi tanggal tidak diubah.
  */
 async function getLogAktivitasImpl(limit: number) {
   const [recentRen, recentReal] = await Promise.all([
@@ -103,7 +114,7 @@ const getLogAktivitasCached = unstable_cache(
   async (limit: number) => {
     return getLogAktivitasImpl(limit);
   },
-  ["pemupukan:log-aktivitas"],
+  ["pemupukan:log-aktivitas:get"],
   {
     revalidate: 60, // cache 1 menit (log sifatnya lebih dinamis)
     tags: ["pemupukan:log-aktivitas"],
@@ -112,9 +123,17 @@ const getLogAktivitasCached = unstable_cache(
 
 export async function GET(req: NextRequest) {
   try {
+    const session = await requireAuth();
+    if (!session) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
     const url = new URL(req.url);
     const limitParam = url.searchParams.get("limit");
-    const limit = limitParam ? Number(limitParam) : 20;
+
+    const parsed = limitParam ? Number(limitParam) : 20;
+    // batasi limit agar query log tidak bisa disalahgunakan jadi "full scan"
+    const limit = Math.min(Math.max(parsed || 20, 5), 100);
 
     const data = await getLogAktivitasCached(limit);
 

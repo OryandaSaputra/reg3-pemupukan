@@ -56,15 +56,12 @@
   --ptpn-cream: rgba(255, 255, 255, 0.04);
 
   /* Glassmorphism tokens */
-  --glass-bg: rgba(255, 255, 255, 0.18);
-  /* 18–20% */
-  --glass-bg-strong: rgba(255, 255, 255, 0.26);
-  /* ~25% */
+  --glass-bg: rgba(255, 255, 255, 0.18); /* 18–20% */
+  --glass-bg-strong: rgba(255, 255, 255, 0.26); /* ~25% */
   --glass-border: rgba(255, 255, 255, 0.4);
 
   /* Warna dasar untuk shadcn/tailwind theme (mode terang) */
-  --background: #03130a;
-  /* hijau sangat gelap, jadi dasar gradient */
+  --background: #03130a; /* hijau sangat gelap, jadi dasar gradient */
   --foreground: #e9f7ec;
 
   --card: var(--glass-bg);
@@ -92,16 +89,11 @@
   --ring: rgba(255, 255, 255, 0.6);
 
   /* Chart palet hijau-kuning */
-  --chart-1: #2e7d32;
-  /* hijau daun */
-  --chart-2: #a5d6a7;
-  /* hijau muda */
-  --chart-3: #6d4c41;
-  /* coklat tanah */
-  --chart-4: #fbc02d;
-  /* kuning aksen */
-  --chart-5: #66bb6a;
-  /* hijau tambahan */
+  --chart-1: #2e7d32; /* hijau daun */
+  --chart-2: #a5d6a7; /* hijau muda */
+  --chart-3: #6d4c41; /* coklat tanah */
+  --chart-4: #fbc02d; /* kuning aksen */
+  --chart-5: #66bb6a; /* hijau tambahan */
 
   /* Sidebar */
   --sidebar: rgba(3, 19, 10, 0.65);
@@ -112,6 +104,9 @@
   --sidebar-accent-foreground: #f1fbf3;
   --sidebar-border: rgba(255, 255, 255, 0.22);
   --sidebar-ring: rgba(255, 255, 255, 0.6);
+
+  /* Hint ke browser bahwa tema dominan gelap (scrollbar, form default, dll) */
+  color-scheme: dark;
 }
 
 .dark {
@@ -164,6 +159,11 @@
     @apply border-border outline-ring/50;
   }
 
+  html,
+  body {
+    min-height: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
 
@@ -185,9 +185,7 @@
     backdrop-filter: blur(20px) saturate(150%);
     -webkit-backdrop-filter: blur(20px) saturate(150%);
     box-shadow: 0 18px 45px rgba(6, 40, 18, 0.6);
-
-    /* ⬇️ tambahkan ini */
-    overflow: visible;
+    overflow: visible; /* penting supaya tooltip/chart dsb tidak kepotong */
   }
 
   .glass-surface-strong {
@@ -196,8 +194,6 @@
     backdrop-filter: blur(20px) saturate(170%);
     -webkit-backdrop-filter: blur(20px) saturate(170%);
     box-shadow: 0 22px 60px rgba(3, 18, 9, 0.75);
-
-    /* ⬇️ tambahkan ini */
     overflow: visible;
   }
 

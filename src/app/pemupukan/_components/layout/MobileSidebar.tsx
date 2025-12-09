@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState, memo } from "react";
 import Image from "next/image";
 import {
   Database,
@@ -14,25 +14,25 @@ import {
 import { useRouter, usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 
-export default function MobileSidebar({
-  sidebarOpen,
-  setSidebarOpen,
-  setFilterOpen,
-}: {
+type MobileSidebarProps = {
   sidebarOpen: boolean;
   setSidebarOpen: (v: boolean) => void;
   setFilterOpen: (v: boolean) => void;
-}) {
+};
+
+function MobileSidebar({
+  sidebarOpen,
+  setSidebarOpen,
+  setFilterOpen,
+}: MobileSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [loading, setLoading] = useState(false);
 
   // Matikan spinner ketika route berubah (halaman sudah load)
   useEffect(() => {
-    if (loading) {
-      setLoading(false);
-    }
-  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+    setLoading(false);
+  }, [pathname]);
 
   if (!sidebarOpen) return null;
 
@@ -77,7 +77,9 @@ export default function MobileSidebar({
                 <h1 className="text-[11px] uppercase tracking-[0.2em] text-emerald-100/80">
                   PT Perkebunan Nusantara IV
                 </h1>
-                <p className="text-[10px] text-emerald-100/60">Regional III</p>
+                <p className="text-[10px] text-emerald-100/60">
+                  Regional III
+                </p>
               </div>
             </div>
             <button
@@ -228,3 +230,5 @@ export default function MobileSidebar({
     </>
   );
 }
+
+export default memo(MobileSidebar);

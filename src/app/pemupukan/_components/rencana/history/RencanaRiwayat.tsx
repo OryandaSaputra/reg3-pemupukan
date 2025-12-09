@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import SectionHeader from "../components/SectionHeader";
+import SectionHeader from "../../shared/SectionHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { KEBUN_LABEL, ORDER_DTM, ORDER_DBR } from "../constants";
-import { usePemupukan } from "../context";
+import { KEBUN_LABEL, ORDER_DTM, ORDER_DBR } from "../../../_config/constants";
+import { usePemupukan } from "../../../_state/context";
 import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 import {
@@ -127,6 +127,25 @@ function mapApiToHistoryRow(r: ApiRencana): HistoryRow {
   };
 }
 
+// HistoryRow → body untuk Excel
+function historyRowsToSheetBody(rows: HistoryRow[]): (string | number)[][] {
+  return rows.map((r) => [
+    r.tanggal,
+    r.kategori,
+    KEBUN_LABEL[r.kebun] ?? r.kebun,
+    r.kodeKebun,
+    r.afd,
+    r.tt,
+    r.blok,
+    r.luas ?? "",
+    r.inv ?? "",
+    r.jenisPupuk,
+    r.aplikasi ?? "",
+    r.dosis ?? "",
+    r.kgPupuk ?? "",
+  ]);
+}
+
 /* ==== CACHING DI LEVEL MODUL (IN-MEMORY DI CLIENT) ==== */
 
 let rencanaCache: HistoryRow[] | null = null;
@@ -172,7 +191,6 @@ export default function RencanaRiwayat() {
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [total, setTotal] = useState(0);
 
   const router = useRouter();
 
@@ -218,12 +236,10 @@ export default function RencanaRiwayat() {
         if (!active) return;
 
         setRows(allRows);
-        setTotal(allRows.length);
       } catch (err) {
         console.error(err);
         if (active) {
           setRows([]);
-          setTotal(0);
         }
       } finally {
         if (active) setLoading(false);
@@ -446,7 +462,6 @@ export default function RencanaRiwayat() {
       }
 
       setRows((prev) => prev.filter((r) => r.id !== row.id));
-      setTotal((prev) => (prev > 0 ? prev - 1 : 0));
       invalidateRencanaCache(); // ✨ reset cache setelah mutasi
 
       await Swal.fire({
@@ -468,7 +483,7 @@ export default function RencanaRiwayat() {
 
   // === ACTION: HAPUS SEMUA DATA ===
   const handleDeleteAll = async () => {
-    if (total === 0) return;
+    if (rows.length === 0) return;
 
     const result = await Swal.fire({
       title: "Hapus semua data rencana?",
@@ -509,7 +524,6 @@ export default function RencanaRiwayat() {
       setRows([]);
       setQ("");
       setSelectedKebun("");
-      setTotal(0);
       invalidateRencanaCache(); // ✨ reset cache setelah mutasi besar
 
       await Swal.fire({
@@ -585,9 +599,6 @@ export default function RencanaRiwayat() {
       const deletedCount = json?.deletedCount ?? 0;
 
       setRows((prev) => prev.filter((r) => r.kebun !== selectedKebun));
-      setTotal((prev) =>
-        deletedCount > 0 ? Math.max(0, prev - deletedCount) : prev
-      );
       setSelectedKebun("");
       invalidateRencanaCache(); // ✨ reset cache setelah mutasi per kebun
 
@@ -670,21 +681,7 @@ export default function RencanaRiwayat() {
 
         const sheetData = [
           [...TABLE_HEADERS],
-          ...kebunRows.map((r) => [
-            r.tanggal,
-            r.kategori,
-            KEBUN_LABEL[r.kebun] ?? r.kebun,
-            r.kodeKebun,
-            r.afd,
-            r.tt,
-            r.blok,
-            r.luas ?? "",
-            r.inv ?? "",
-            r.jenisPupuk,
-            r.aplikasi ?? "",
-            r.dosis ?? "",
-            r.kgPupuk ?? "",
-          ]),
+          ...historyRowsToSheetBody(kebunRows),
         ];
 
         const ws = XLSX.utils.aoa_to_sheet(sheetData);
@@ -748,21 +745,7 @@ export default function RencanaRiwayat() {
 
       const sheetData = [
         [...TABLE_HEADERS],
-        ...kebunRows.map((r) => [
-          r.tanggal,
-          r.kategori,
-          KEBUN_LABEL[r.kebun] ?? r.kebun,
-          r.kodeKebun,
-          r.afd,
-          r.tt,
-          r.blok,
-          r.luas ?? "",
-          r.inv ?? "",
-          r.jenisPupuk,
-          r.aplikasi ?? "",
-          r.dosis ?? "",
-          r.kgPupuk ?? "",
-        ]),
+        ...historyRowsToSheetBody(kebunRows),
       ];
 
       const ws = XLSX.utils.aoa_to_sheet(sheetData);
@@ -977,6 +960,8 @@ export default function RencanaRiwayat() {
     exportCurrentKebun != null
       ? `${KEBUN_LABEL[exportCurrentKebun] ?? exportCurrentKebun} (${exportCurrentKebun})`
       : "-";
+
+  const total = rows.length;
 
   return (
     <>
@@ -1203,7 +1188,7 @@ export default function RencanaRiwayat() {
 
                     return (
                       <tr
-                        key={`${r.id}-${virtualRow.index}`}
+                        key={r.id}
                         className="border-t border-white/10 hover:bg-white/10 dark:hover:bg-white/5 transition"
                       >
                         <td className="px-3 py-2">{r.tanggal}</td>

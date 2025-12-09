@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,8 +14,8 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Filter as FilterIcon, RefreshCcw, Loader2 } from "lucide-react";
-import { KEBUN_LABEL } from "../constants";
-import type { Kategori } from "../derive";
+import { KEBUN_LABEL } from "../../_config/constants";
+import type { Kategori } from "../../_state/derive";
 
 type Props = {
   open: boolean;
@@ -70,7 +71,7 @@ type Props = {
   metaLoading?: boolean;
 };
 
-export default function FilterPanel(props: Props) {
+function FilterPanel(props: Props) {
   const router = useRouter();
 
   const {
@@ -110,8 +111,6 @@ export default function FilterPanel(props: Props) {
     resetFilter,
     metaLoading,
   } = props;
-
-  if (!open) return null;
 
   const isMetaLoading = metaLoading ?? false;
 
@@ -176,7 +175,6 @@ export default function FilterPanel(props: Props) {
   const handleReset = () => {
     setDateFrom("");
     setDateTo("");
-
     router.push("?");
     resetFilter();
   };
@@ -186,13 +184,17 @@ export default function FilterPanel(props: Props) {
   const safeDistrikOptions = distrikOptions ?? [];
   const safeKebunOptions = kebunOptions ?? [];
   const safeKategoriOptions =
-    kategoriOptions ?? ["all", "TM", "TBM", "BIBITAN"];
+    kategoriOptions ?? (["all", "TM", "TBM", "BIBITAN"] as (Kategori | "all")[]);
   const safeAfdOptions = afdOptions ?? [];
   const safeTtOptions = ttOptions ?? [];
   const safeBlokOptions = blokOptions ?? [];
   const safeJenisOptions = jenisOptions ?? ["all"];
   const safeAplikasiOptions = aplikasiOptions ?? ["all", "1", "2", "3"];
   const safeYearOptions = dataYearOptions ?? [];
+
+  /* ===================== EARLY RETURN SETELAH SEMUA HOOK ===================== */
+
+  if (!open) return null;
 
   /* ===================== UI ===================== */
 
@@ -588,3 +590,5 @@ export default function FilterPanel(props: Props) {
     </div>
   );
 }
+
+export default React.memo(FilterPanel);

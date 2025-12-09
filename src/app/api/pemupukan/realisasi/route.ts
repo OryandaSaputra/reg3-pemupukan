@@ -1,13 +1,15 @@
 // src/app/api/pemupukan/realisasi/route.ts
+'use server';
+
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/prisma";
 import { Prisma, KategoriTanaman } from "@prisma/client";
-import { parseTanggalIsoJakarta } from "@/app/pemupukan/dateHelpers";
+import { parseTanggalIsoJakarta } from "@/app/pemupukan/_services/dateHelpers";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth.config";
 import { unstable_cache, revalidateTag } from "next/cache";
 
-const MAX_ROWS_PER_UPLOAD = 10000;
+const MAX_ROWS_PER_UPLOAD = 10_000;
 
 /**
  * Helper aman untuk string
@@ -129,7 +131,6 @@ function mapIncomingRow(
 
 async function requireAuth() {
   const session = await getServerSession(authOptions);
-  if (!session) return null;
   return session;
 }
 
@@ -186,8 +187,7 @@ async function getRealisasiDataImpl(params: GetParams) {
     where.kategori = kategoriParam as KategoriTanaman;
   }
 
-  // Filter tanggal: kalau ada dateFrom/dateTo → pakai itu;
-  // kalau tidak ada tapi ada "tahun" → pakai range 1 Jan s/d 1 Jan tahun berikutnya.
+  // Filter tanggal
   let tanggalFilter: Prisma.DateTimeFilter | undefined;
 
   const fromDate = parseDateOnly(dateFromParam);
@@ -238,7 +238,6 @@ async function getRealisasiDataImpl(params: GetParams) {
   const [data, total] = await Promise.all([
     prisma.realisasiPemupukan.findMany({
       where,
-      // Untuk riwayat biasanya lebih enak terbaru dulu
       orderBy: [{ tanggal: "desc" }, { createdAt: "desc" }, { id: "desc" }],
       skip,
       take: pageSize,
@@ -291,7 +290,7 @@ export async function GET(req: Request) {
     const dateToParam = search.get("dateTo");
     const searchTerm = search.get("search") || search.get("q");
 
-    const hasAdvancedParams =
+    const hasAdvancedParams = Boolean(
       pageParam ||
       pageSizeParam ||
       kebunParam ||
@@ -299,7 +298,8 @@ export async function GET(req: Request) {
       tahunParam ||
       dateFromParam ||
       dateToParam ||
-      searchTerm;
+      searchTerm
+    );
 
     const params: GetParams = {
       pageParam,
@@ -310,7 +310,7 @@ export async function GET(req: Request) {
       dateFromParam,
       dateToParam,
       searchTerm,
-      hasAdvancedParams: Boolean(hasAdvancedParams),
+      hasAdvancedParams,
     };
 
     const result = await getRealisasiDataCached(params);
@@ -455,10 +455,7 @@ export async function PUT(req: Request) {
 
     const mapped = mapIncomingRow(body);
     if (!mapped.ok) {
-      return NextResponse.json(
-        { message: mapped.error },
-        { status: 400 }
-      );
+      return NextResponse.json({ message: mapped.error }, { status: 400 });
     }
 
     const updated = await prisma.realisasiPemupukan.update({
@@ -548,9 +545,7 @@ export async function DELETE(req: Request) {
 
     // b) Kalau tidak ada di query, coba baca dari body JSON { id: ... }
     if (!id) {
-      const body = (await req
-        .json()
-        .catch(() => null)) as { id?: number } | null;
+      const body = (await req.json().catch(() => null)) as { id?: number } | null;
       if (body && body.id != null) {
         const parsed = Number(body.id);
         if (Number.isFinite(parsed) && parsed > 0) {

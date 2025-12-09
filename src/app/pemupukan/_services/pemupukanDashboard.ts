@@ -1,21 +1,21 @@
-// src/app/pemupukan/PemupukanClient.tsx
-import Ikhtisar from "@/app/pemupukan/sections/Ikhtisar";
-import dynamic from "next/dynamic";
-import type { TmRow } from "@/app/pemupukan/sections/Visualisasi";
+// src/app/pemupukan/_services/pemupukanDashboard.ts
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { KategoriTanaman } from "@prisma/client";
-import { ORDER_DTM, ORDER_DBR } from "./constants";
-import LogAktivitas from "@/app/pemupukan/sections/LogAktivitas";
 import { unstable_cache } from "next/cache";
 
-/** Visualisasi di-split ke chunk terpisah */
-const Visualisasi = dynamic(
-  () => import("@/app/pemupukan/sections/Visualisasi")
-  // opsi { ssr: false } DIHAPUS supaya boleh dipakai di Server Component
-);
+import { ORDER_DTM, ORDER_DBR } from "../_config/constants";
+import type { TmRow } from "@/app/pemupukan/_components/dashboard/visualisasi/Visualisasi";
+
+import {
+  type FilterOptions,
+  type SearchParams,
+  buildFiltersFromSearchParams,
+  resolvePeriodFromSearchParams,
+} from "./pemupukanFilters";
 
 /* ===================[ Helper: ambil MIN–MAX tanggal realisasi ]=================== */
+
 async function getRealisasiRange(): Promise<{ start: Date; end: Date }> {
   const [minRow, maxRow] = await Promise.all([
     prisma.realisasiPemupukan.findFirst({
@@ -44,36 +44,31 @@ async function getRealisasiRange(): Promise<{ start: Date; end: Date }> {
   return { start, end };
 }
 
-/* ===================[ Build TM/TBM rows dari DB ]=================== */
+/* ===================[ Helper kecil: mapping kategori string → enum ]=================== */
 
-// Helper format tanggal ke YYYY-MM-DD (WIB)
-// const fmtYmdJakarta = (d: Date): string =>
-//   new Intl.DateTimeFormat("en-CA", {
-//     timeZone: "Asia/Jakarta",
-//     year: "numeric",
-//     month: "2-digit",
-//     day: "2-digit",
-//   }).format(d); // "YYYY-MM-DD"
+function resolveKategoriEnum(
+  filters: FilterOptions,
+  kategori?: KategoriTanaman
+): KategoriTanaman | undefined {
+  if (kategori) return kategori;
 
-// type RowInput = {
-//   kebun: string;
-//   aplikasiKe: number;
-//   kgPupuk: number;
-//   tanggal: Date | null;
-//   ymd: string | null; // tanggal dalam format YYYY-MM-DD (WIB)
-// };
+  if (!filters.kategori || filters.kategori === "all") {
+    return undefined;
+  }
 
-// ====== Helper filter umum untuk query Prisma ======
-type FilterOptions = {
-  distrik?: string; // "DTM" | "DBR" | "all" | undefined
-  kebun?: string;
-  kategori?: string; // "TM" | "TBM" | "BIBITAN" | "all" | undefined
-  afd?: string;
-  tt?: string;
-  blok?: string;
-  jenis?: string;
-  aplikasi?: string; // "1" | "2" | "3" | "all"
-};
+  switch (filters.kategori) {
+    case "TM":
+      return KategoriTanaman.TM;
+    case "TBM":
+      return KategoriTanaman.TBM;
+    case "BIBITAN":
+      return KategoriTanaman.BIBITAN;
+    default:
+      return undefined;
+  }
+}
+
+/* ===================[ Filter → Where Prisma ]=================== */
 
 /**
  * buildRencanaWhere:
@@ -86,24 +81,7 @@ function buildRencanaWhere(
   const where: Prisma.RencanaPemupukanWhereInput = {};
 
   // ====== KATEGORI (TM / TBM / BIBITAN) ======
-  let kategoriEnum: KategoriTanaman | undefined = kategori;
-
-  if (!kategoriEnum && filters.kategori && filters.kategori !== "all") {
-    switch (filters.kategori) {
-      case "TM":
-        kategoriEnum = KategoriTanaman.TM;
-        break;
-      case "TBM":
-        kategoriEnum = KategoriTanaman.TBM;
-        break;
-      case "BIBITAN":
-        kategoriEnum = KategoriTanaman.BIBITAN;
-        break;
-      default:
-        break;
-    }
-  }
-
+  const kategoriEnum = resolveKategoriEnum(filters, kategori);
   if (kategoriEnum) {
     where.kategori = kategoriEnum;
   }
@@ -114,8 +92,8 @@ function buildRencanaWhere(
       filters.distrik === "DTM"
         ? ORDER_DTM
         : filters.distrik === "DBR"
-          ? ORDER_DBR
-          : undefined;
+        ? ORDER_DBR
+        : undefined;
 
     if (allowed && allowed.length > 0) {
       where.kebun = { in: allowed };
@@ -144,6 +122,30 @@ function buildRencanaWhere(
     const appNum = Number(filters.aplikasi);
     if (Number.isFinite(appNum)) {
       where.aplikasiKe = appNum;
+    }
+  }
+
+  // ====== TAHUN DATA (dari ?year=YYYY) ======
+  if (filters.year) {
+    const yearNum = Number(filters.year);
+    if (Number.isFinite(yearNum)) {
+      const start = new Date(yearNum, 0, 1); // 1 Jan yearNum
+      const end = new Date(yearNum + 1, 0, 1); // 1 Jan tahun berikutnya (exclusive)
+
+      const dateFilter: Prisma.DateTimeNullableFilter = {
+        gte: start,
+        lt: end,
+      };
+
+      if (where.tanggal && typeof where.tanggal === "object") {
+        // kalau suatu saat nanti ada filter tanggal lain, merge
+        where.tanggal = {
+          ...(where.tanggal as Prisma.DateTimeNullableFilter),
+          ...dateFilter,
+        };
+      } else {
+        where.tanggal = dateFilter;
+      }
     }
   }
 
@@ -157,24 +159,7 @@ function buildRealisasiWhere(
   const where: Prisma.RealisasiPemupukanWhereInput = {};
 
   // ====== KATEGORI ======
-  let kategoriEnum: KategoriTanaman | undefined = kategori;
-
-  if (!kategoriEnum && filters.kategori && filters.kategori !== "all") {
-    switch (filters.kategori) {
-      case "TM":
-        kategoriEnum = KategoriTanaman.TM;
-        break;
-      case "TBM":
-        kategoriEnum = KategoriTanaman.TBM;
-        break;
-      case "BIBITAN":
-        kategoriEnum = KategoriTanaman.BIBITAN;
-        break;
-      default:
-        break;
-    }
-  }
-
+  const kategoriEnum = resolveKategoriEnum(filters, kategori);
   if (kategoriEnum) {
     where.kategori = kategoriEnum;
   }
@@ -185,8 +170,8 @@ function buildRealisasiWhere(
       filters.distrik === "DTM"
         ? ORDER_DTM
         : filters.distrik === "DBR"
-          ? ORDER_DBR
-          : undefined;
+        ? ORDER_DBR
+        : undefined;
 
     if (allowed && allowed.length > 0) {
       where.kebun = { in: allowed };
@@ -218,10 +203,35 @@ function buildRealisasiWhere(
     }
   }
 
+  // ====== TAHUN DATA (dari ?year=YYYY) ======
+  if (filters.year) {
+    const yearNum = Number(filters.year);
+    if (Number.isFinite(yearNum)) {
+      const start = new Date(yearNum, 0, 1); // 1 Jan yearNum
+      const end = new Date(yearNum + 1, 0, 1); // 1 Jan tahun berikutnya
+
+      const dateFilter: Prisma.DateTimeNullableFilter = {
+        gte: start,
+        lt: end,
+      };
+
+      if (where.tanggal && typeof where.tanggal === "object") {
+        where.tanggal = {
+          ...(where.tanggal as Prisma.DateTimeNullableFilter),
+          ...dateFilter,
+        };
+      } else {
+        where.tanggal = dateFilter;
+      }
+    }
+  }
+
   return where;
 }
 
-// Helper: awal hari di zona waktu Jakarta
+/* ===================[ Helper tanggal ]=================== */
+
+// Awal hari di zona waktu Jakarta
 function startOfDayJakarta(date: Date): Date {
   const zoned = new Date(
     date.toLocaleString("en-US", { timeZone: "Asia/Jakarta" })
@@ -236,9 +246,8 @@ function nextDay(date: Date): Date {
   return d;
 }
 
-/**
- * buildTmRowsFromDb
- */
+/* ===================[ TM/TBM rows dari DB ]=================== */
+
 async function buildTmRowsFromDb(
   kategori: KategoriTanaman,
   today: Date,
@@ -445,7 +454,6 @@ async function buildTmRowsFromDb(
 
 /* ===================[ Agg untuk Ikhtisar & Pie ]=================== */
 
-// >>>>> PERUBAHAN DI SINI: tambah parameter period & usePeriodForRealisasi
 async function getTotals(
   filters: FilterOptions,
   period: { start: Date; end: Date },
@@ -474,7 +482,7 @@ async function getTotals(
 
         if (where.tanggal && typeof where.tanggal === "object") {
           where.tanggal = {
-            ...where.tanggal,
+            ...(where.tanggal as Prisma.DateTimeNullableFilter),
             ...dateFilter,
           };
         } else {
@@ -559,7 +567,7 @@ async function getTotals(
 
       if (dtmRealWhere.tanggal && typeof dtmRealWhere.tanggal === "object") {
         dtmRealWhere.tanggal = {
-          ...dtmRealWhere.tanggal,
+          ...(dtmRealWhere.tanggal as Prisma.DateTimeNullableFilter),
           ...dateFilter,
         };
       } else {
@@ -568,7 +576,7 @@ async function getTotals(
 
       if (dbrRealWhere.tanggal && typeof dbrRealWhere.tanggal === "object") {
         dbrRealWhere.tanggal = {
-          ...dbrRealWhere.tanggal,
+          ...(dbrRealWhere.tanggal as Prisma.DateTimeNullableFilter),
           ...dateFilter,
         };
       } else {
@@ -643,7 +651,7 @@ async function getAggPupuk(
 
     if (whereReal.tanggal && typeof whereReal.tanggal === "object") {
       whereReal.tanggal = {
-        ...whereReal.tanggal,
+        ...(whereReal.tanggal as Prisma.DateTimeNullableFilter),
         ...dateFilter,
       };
     } else {
@@ -696,15 +704,12 @@ async function getAggPupuk(
     realisasi: r.realisasi,
     rencana_ha: 0,
     realisasi_ha: 0,
-    progress: r.rencana && r.rencana > 0 ? (r.realisasi / r.rencana) * 100 : 0,
+    progress:
+      r.rencana && r.rencana > 0 ? (r.realisasi / r.rencana) * 100 : 0,
   }));
 }
 
-/* ===================[ CACHED WRAPPERS (Next.js Data Cache) ]=================== */
-/**
- * Wrapper caching untuk fungsi-fungsi DB di atas.
- * Logika perhitungan tetap sama, hanya hasilnya disimpan sementara oleh Next.
- */
+/* ===================[ CACHED WRAPPERS ]=================== */
 
 const getRealisasiRangeCached = unstable_cache(
   async () => {
@@ -712,7 +717,6 @@ const getRealisasiRangeCached = unstable_cache(
   },
   ["pemupukan:getRealisasiRange"],
   {
-    // misal: cache selama 5 menit
     revalidate: 300,
   }
 );
@@ -767,150 +771,96 @@ const getAggPupukCached = unstable_cache(
   }
 );
 
-/* ===================[ PAGE-LEVEL CLIENT (dipanggil dari page.tsx) ]=================== */
+/* ===================[ FUNGSI UTAMA UNTUK PAGE ]=================== */
 
-export type SearchParams = {
-  dateFrom?: string;
-  dateTo?: string;
+export type DashboardData = {
+  tmRows: TmRow[];
+  tbmRows: TmRow[];
+  tmTbmRows: TmRow[];
 
-  // filter spasial / jenis
-  distrik?: string;
-  kebun?: string;
-  kategori?: string;
-  afd?: string;
-  tt?: string;
-  blok?: string;
-  jenis?: string;
-  aplikasi?: string; // <- DARI QUERY STRING
+  totals: {
+    totalRencana: number;
+    totalRealisasi: number;
+    tmRencana: number;
+    tmRealisasi: number;
+    tbmRencana: number;
+    tbmRealisasi: number;
+    bibRencana: number;
+    bibRealisasi: number;
+    dtmRencana: number;
+    dbrRencana: number;
+    dtmRealisasi: number;
+    dbrRealisasi: number;
+  };
+
+  aggPupuk: {
+    jenis: string;
+    rencana: number;
+    realisasi: number;
+    rencana_ha: number;
+    realisasi_ha: number;
+    progress: number;
+  }[];
+
+  headerDates: { today: string };
+  realWindow: { start: string; end: string };
+  realCutoffDate: string;
+  hasUserDateFilter: boolean;
 };
 
-export default async function PemupukanClient({
-  searchParams,
-}: {
-  searchParams?: SearchParams;
-}) {
+/**
+ * Fungsi yang akan dipanggil dari PemupukanDashboardPage.tsx
+ * menggantikan isi PemupukanClient sebelumnya.
+ */
+export async function getDashboardData(
+  searchParams?: SearchParams
+): Promise<DashboardData> {
   const today = new Date();
   const today0 = new Date(today);
   today0.setHours(0, 0, 0, 0);
 
-  // gunakan versi cached
   const realRange = await getRealisasiRangeCached();
 
-  let periodStart = new Date(realRange.start);
-  let periodEnd = new Date(realRange.end);
+  const {
+    period,
+    hasUserDateFilter,
+    headerDates,
+    realWindow,
+    realCutoffDate,
+  } = resolvePeriodFromSearchParams(realRange, searchParams);
 
-  const hasUserFilter = Boolean(
-    (searchParams?.dateFrom ?? "") || (searchParams?.dateTo ?? "")
-  );
-
-  if (searchParams?.dateFrom) {
-    const df = new Date(searchParams.dateFrom);
-    if (!Number.isNaN(df.getTime())) {
-      periodStart = df;
-      periodStart.setHours(0, 0, 0, 0);
-    }
-  }
-
-  if (searchParams?.dateTo) {
-    const dt = new Date(searchParams.dateTo);
-    if (!Number.isNaN(dt.getTime())) {
-      periodEnd = dt;
-      periodEnd.setHours(0, 0, 0, 0);
-    }
-  }
-
-  if (periodStart > periodEnd) {
-    const tmp = periodStart;
-    periodStart = periodEnd;
-    periodEnd = tmp;
-  }
-
-  // ====== Filter global yang dibawa dari URL (kecuali tanggal) ======
-  const filters: FilterOptions = {
-    distrik: searchParams?.distrik,
-    kebun: searchParams?.kebun,
-    kategori: searchParams?.kategori,
-    afd: searchParams?.afd,
-    tt: searchParams?.tt,
-    blok: searchParams?.blok,
-    jenis: searchParams?.jenis,
-    aplikasi: searchParams?.aplikasi, // <- PENTING
-  };
-
-  const effectivePeriod = { start: periodStart, end: periodEnd };
+  const filters = buildFiltersFromSearchParams(searchParams);
 
   const [tmRows, tbmRows, totals, aggPupuk] = await Promise.all([
     buildTmRowsFromDbCached(
       KategoriTanaman.TM,
       today0,
-      effectivePeriod,
-      hasUserFilter,
+      period,
+      hasUserDateFilter,
       filters
     ),
     buildTmRowsFromDbCached(
       KategoriTanaman.TBM,
       today0,
-      effectivePeriod,
-      hasUserFilter,
+      period,
+      hasUserDateFilter,
       filters
     ),
-    // >>>> PEMANGGILAN BARU: pakai versi cached
-    getTotalsCached(filters, effectivePeriod, hasUserFilter),
-    getAggPupukCached(filters, effectivePeriod, hasUserFilter),
+    getTotalsCached(filters, period, hasUserDateFilter),
+    getAggPupukCached(filters, period, hasUserDateFilter),
   ]);
 
   const tmTbmRows: TmRow[] = [...tmRows, ...tbmRows];
 
-  const todayISO = today0.toISOString().slice(0, 10);
-
-  const headerDates = {
-    today: todayISO,
+  return {
+    tmRows,
+    tbmRows,
+    tmTbmRows,
+    totals,
+    aggPupuk,
+    headerDates,
+    realWindow,
+    realCutoffDate,
+    hasUserDateFilter,
   };
-
-  const getISOString = (value: string | Date) => {
-    if (typeof value === "string") return value.slice(0, 10); // "YYYY-MM-DD"
-    return value.toISOString().slice(0, 10);
-  };
-
-  const labelStartISO =
-    hasUserFilter && searchParams?.dateFrom
-      ? searchParams.dateFrom
-      : getISOString(realRange.start);
-
-  const labelEndISO =
-    hasUserFilter && searchParams?.dateTo
-      ? searchParams.dateTo
-      : getISOString(realRange.end);
-
-  const realWindow = {
-    start: labelStartISO,
-    end: labelEndISO,
-  };
-
-  const hasUserDateFilter = hasUserFilter;
-
-  return (
-    <>
-      <Ikhtisar
-        totals={totals}
-        realisasiHarian={0}
-        rencanaBesok={0}
-        tanggalHariIni={headerDates.today}
-        tanggalBesok={undefined}
-      />
-      <Visualisasi
-        barPerKebun={[]}
-        aggPupuk={aggPupuk}
-        stokVsSisa={[]}
-        tmRows={tmRows}
-        tbmRows={tbmRows}
-        tmTbmRows={tmTbmRows}
-        headerDates={headerDates}
-        realWindow={realWindow}
-        realCutoffDate={realWindow.end}
-        hasUserFilter={hasUserDateFilter}
-      />
-      <LogAktivitas />
-    </>
-  );
 }

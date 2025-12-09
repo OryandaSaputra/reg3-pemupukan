@@ -1,19 +1,18 @@
+// src/app/pemupukan/layout.tsx
 "use client";
 
-import React from "react";
-import { PemupukanProvider, usePemupukan } from "@/app/pemupukan/context";
-import Sidebar from "@/app/pemupukan/components/Sidebar";
-import MobileSidebar from "@/app/pemupukan/components/MobileSidebar";
-import FilterPanel from "@/app/pemupukan/components/FilterPanel";
+import React, { useCallback, useMemo } from "react";
+import { PemupukanProvider, usePemupukan } from "@/app/pemupukan/_state/context";
+import Sidebar from "@/app/pemupukan/_components/layout/Sidebar";
+import MobileSidebar from "@/app/pemupukan/_components/layout/MobileSidebar";
+import FilterPanel from "@/app/pemupukan/_components/layout/FilterPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Filter as FilterIcon, Menu } from "lucide-react";
 import { createStyleVars } from "@/app/pemupukan/utils";
-import { KEBUN_LABEL } from "@/app/pemupukan/constants";
+import { KEBUN_LABEL } from "@/app/pemupukan/_config/constants";
 
 function Frame({ children }: { children: React.ReactNode }) {
-  const styleVars = createStyleVars();
-
   const {
     // ui
     sidebarOpen,
@@ -66,6 +65,14 @@ function Frame({ children }: { children: React.ReactNode }) {
     resetFilter,
   } = usePemupukan();
 
+  // Style vars tidak berubah antar render → memo supaya tidak recreate object tiap kali
+  const styleVars = useMemo(() => createStyleVars(), []);
+
+  // Callbacks sering dipass ke child → dibungkus useCallback agar referensinya stabil
+  const openSidebar = useCallback(() => setSidebarOpen(true), [setSidebarOpen]);
+  const openFilter = useCallback(() => setFilterOpen(true), [setFilterOpen]);
+  const closeFilter = useCallback(() => setFilterOpen(false), [setFilterOpen]);
+
   return (
     <div
       className="min-h-screen flex gap-4 px-3 py-4 lg:px-6 lg:py-6 text-emerald-50 transition-colors duration-300"
@@ -96,7 +103,7 @@ function Frame({ children }: { children: React.ReactNode }) {
               <div className="flex items-center gap-3">
                 <button
                   className="lg:hidden p-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-md hover:bg-white/10 transition-colors"
-                  onClick={() => setSidebarOpen(true)}
+                  onClick={openSidebar}
                 >
                   <Menu className="h-5 w-5" />
                 </button>
@@ -109,7 +116,7 @@ function Frame({ children }: { children: React.ReactNode }) {
                 <Button
                   variant="outline"
                   className="gap-2 h-8 px-3 rounded-full border-[--glass-border] bg-white/5 text-emerald-50 hover:bg-white/10 hover:text-emerald-50/90 backdrop-blur-md transition-colors"
-                  onClick={() => setFilterOpen(true)}
+                  onClick={openFilter}
                 >
                   <FilterIcon className="h-4 w-4" /> Filter
                 </Button>
@@ -235,7 +242,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       {/* Filter Panel */}
       <FilterPanel
         open={filterOpen}
-        onClose={() => setFilterOpen(false)}
+        onClose={closeFilter}
         distrik={distrik}
         setDistrik={setDistrik}
         kebun={kebun}
@@ -268,7 +275,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         ttOptions={ttOptions}
         blokOptions={blokOptions}
         resetFilter={resetFilter}
-        metaLoading={metaLoading} // ✅ kirim ke FilterPanel
+        metaLoading={metaLoading}
       />
     </div>
   );

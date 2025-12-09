@@ -1,4 +1,4 @@
-// src/app/pemupukan/dateHelpers.ts
+// src/app/pemupukan/_services/dateHelpers.ts
 
 /**
  * Tipe umum untuk sel Excel yang berisi tanggal.
@@ -117,11 +117,10 @@ export function parseTanggalIsoJakarta(value: unknown): Date | null {
   const maybeNum = Number(s);
   if (Number.isFinite(maybeNum)) {
     const d = excelSerialToUtcDate(maybeNum);
-    if (d) return new Date(Date.UTC(
-      d.getUTCFullYear(),
-      d.getUTCMonth(),
-      d.getUTCDate()
-    ));
+    if (d)
+      return new Date(
+        Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+      );
   }
 
   // "YYYY-MM-DD"

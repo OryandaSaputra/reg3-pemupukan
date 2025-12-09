@@ -6,7 +6,8 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import SectionHeader from "../components/SectionHeader";
+import { useRouter, useSearchParams } from "next/navigation";
+import SectionHeader from "../../shared/SectionHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,31 +18,13 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { KEBUN_LABEL } from "../constants";
-import { ArrowLeft, RefreshCcw, Save } from "lucide-react";
+import { KEBUN_LABEL } from "../../../_config/constants";
 import Swal from "sweetalert2";
-import { useRouter, useSearchParams } from "next/navigation";
+import { RefreshCcw, Save } from "lucide-react";
 
 type Kategori = "TM" | "TBM" | "BIBITAN" | "";
 
-type FormData = {
-  id: number | null;
-  kategori: Kategori;
-  kebun: string;
-  kodeKebun: string;
-  tanggal: string; // YYYY-MM-DD (boleh kosong → null di backend)
-  afd: string;
-  tt: string;
-  blok: string;
-  luas: string;
-  inv: string;
-  jenisPupuk: string;
-  aplikasi: string;
-  dosis: string;
-  kgPupuk: string; // otomatis = inv * dosis
-};
-
-type ApiRencana = {
+type ApiRealisasi = {
   id: number;
   kategori: Kategori;
   kebun: string;
@@ -58,6 +41,22 @@ type ApiRencana = {
   kgPupuk: number;
   createdAt: string;
   updatedAt: string;
+};
+
+type FormData = {
+  kategori: Kategori;
+  kebun: string;
+  kodeKebun: string;
+  tanggal: string; // YYYY-MM-DD
+  afd: string;
+  tt: string;
+  blok: string;
+  luas: string;
+  inv: string;
+  jenisPupuk: string;
+  aplikasi: string;
+  dosis: string;
+  kgPupuk: string; // otomatis = inv * dosis
 };
 
 const JENIS_PUPUK = [
@@ -77,14 +76,14 @@ const AFD_OPTIONS = Array.from({ length: 10 }, (_, i) =>
   `AFD${String(i + 1).padStart(2, "0")}`
 );
 
-// ============== HELPER ANGKA & TANGGAL ==============
+// ================= HELPER ANGKA & TANGGAL =================
 
 function toNumberLoose(
   v: string | number | Date | null | undefined
 ): number {
   if (v === null || v === undefined || v === "") return 0;
   if (v instanceof Date) return 0;
-  const n = Number(String(v).replace(",", "."));
+  const n = Number(String(v).replace(",", ".")); // dukung koma
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -97,7 +96,6 @@ function computeKgPupuk(invStr: string, dosisStr: string): string {
   return String(kg);
 }
 
-// konversi ISO/Date string dari server → "YYYY-MM-DD" lokal
 function toLocalYmd(value: string | null): string {
   if (!value) return "";
   const d = new Date(value);
@@ -108,26 +106,19 @@ function toLocalYmd(value: string | null): string {
   return `${y}-${m}-${day}`;
 }
 
-// helper: normalisasi kategori dari API ke union type
-function normalizeKategori(k: string | null | undefined): Kategori {
-  if (!k) return "";
-  const up = k.toUpperCase();
-  if (up === "TM" || up === "TBM" || up === "BIBITAN") return up;
-  return "";
-}
+// ================== KOMPONEN UTAMA EDIT ===================
 
-/* ===================[ KOMPONEN CONTENT ]=================== */
-
-function RencanaEditContent() {
+function RealisasiEditContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const idParam = searchParams.get("id");
 
-  const [loadingInitial, setLoadingInitial] = useState(true);
+  const [recordId, setRecordId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [initialLoadingDone, setInitialLoadingDone] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [form, setForm] = useState<FormData>({
-    id: null,
     kategori: "",
     kebun: "",
     kodeKebun: "",
@@ -152,105 +143,104 @@ function RencanaEditContent() {
     []
   );
 
-  const onChange = <K extends keyof FormData>(key: K, value: FormData[K]) => {
+  const onChange = <K extends keyof FormData>(
+    key: K,
+    value: FormData[K]
+  ) => {
     setForm((s) => ({ ...s, [key]: value }));
   };
 
-  const resetToInitial = async () => {
-    // reload data dari server untuk id ini
-    if (!idParam) return;
-    await loadData(Number(idParam));
+  const reset = () => {
+    // reset ke data awal yang sudah dimuat (bukan kosong total)
+    if (!recordId) return;
+    fetchRecord(recordId, true);
   };
 
-  // ============ LOAD DATA AWAL ============
+  // ================= FETCH DATA SATU RECORD =================
 
-  const loadData = async (id: number) => {
+  async function fetchRecord(id: number, showToastOnError = false) {
     try {
-      setLoadingInitial(true);
+      setLoading(true);
 
-      // API /rencana GET saat ini belum support ?id=,
-      // jadi kita panggil tanpa query dan filter di sisi client.
-      const res = await fetch("/api/pemupukan/rencana", {
+      // Gunakan GET tanpa query param → backend akan kembalikan semua data
+      const res = await fetch("/api/pemupukan/realisasi", {
         cache: "no-store",
       });
 
       if (!res.ok) {
-        const text = await res.text();
-        console.error("Gagal fetch rencana:", text);
-        await Swal.fire({
-          title: "Gagal mengambil data",
-          text:
-            text ||
-            "Tidak dapat mengambil data rencana dari server. Silakan coba lagi atau hubungi admin.",
-          icon: "error",
-          confirmButtonText: "OK",
-        });
-        return;
+        throw new Error("Gagal mengambil data realisasi");
       }
 
       const json = await res.json();
-      const dataArray: ApiRencana[] = Array.isArray(json) ? json : json.data;
+      const dataArray: ApiRealisasi[] = Array.isArray(json)
+        ? json
+        : json.data;
 
-      const found = dataArray.find((row) => row.id === id);
+      const found = dataArray.find((r) => r.id === id);
+
       if (!found) {
-        await Swal.fire({
-          title: "Data tidak ditemukan",
-          text: `Data rencana dengan ID ${id} tidak ditemukan.`,
-          icon: "warning",
-          confirmButtonText: "OK",
-        });
+        if (showToastOnError || !initialLoadingDone) {
+          await Swal.fire({
+            title: "Data tidak ditemukan",
+            text: "Realisasi dengan ID tersebut tidak ditemukan.",
+            icon: "error",
+            confirmButtonText: "OK",
+          });
+        }
+        router.push("/pemupukan/realisasi/riwayat");
         return;
       }
 
-      const tanggalYmd = toLocalYmd(found.tanggal);
-      const luasStr = found.luasHa ? String(found.luasHa) : "";
-      const invStr = found.inv ? String(found.inv) : "";
-      const dosisStr = found.dosisKgPerPokok
-        ? String(found.dosisKgPerPokok)
-        : "";
-      const kgPupukStr =
-        found.kgPupuk && found.kgPupuk > 0
-          ? String(found.kgPupuk)
-          : computeKgPupuk(invStr, dosisStr);
+      setRecordId(found.id);
 
       setForm({
-        id: found.id,
-        kategori: normalizeKategori(found.kategori),
-        kebun: found.kebun || "",
-        kodeKebun: found.kodeKebun || "",
-        tanggal: tanggalYmd,
+        kategori: found.kategori,
+        kebun: found.kebun,
+        kodeKebun: found.kodeKebun ?? "",
+        tanggal: toLocalYmd(found.tanggal),
         afd: found.afd || "AFD01",
-        tt: found.tt || "",
-        blok: found.blok || "",
-        luas: luasStr,
-        inv: invStr,
+        tt: found.tt ?? "",
+        blok: found.blok ?? "",
+        luas: found.luasHa ? String(found.luasHa) : "",
+        inv: found.inv ? String(found.inv) : "",
         jenisPupuk: found.jenisPupuk || "NPK 13.6.27.4",
         aplikasi: found.aplikasiKe ? String(found.aplikasiKe) : "1",
-        dosis: dosisStr || "1",
-        kgPupuk: kgPupukStr,
+        dosis: found.dosisKgPerPokok
+          ? String(found.dosisKgPerPokok)
+          : "1",
+        kgPupuk: found.kgPupuk
+          ? String(found.kgPupuk)
+          : computeKgPupuk(
+              found.inv ? String(found.inv) : "",
+              found.dosisKgPerPokok
+                ? String(found.dosisKgPerPokok)
+                : ""
+            ),
       });
     } catch (err) {
       console.error(err);
       await Swal.fire({
         title: "Terjadi kesalahan",
-        text: "Tidak dapat memuat data rencana. Cek console atau hubungi admin.",
+        text: "Gagal memuat data realisasi. Silakan coba lagi atau hubungi admin.",
         icon: "error",
         confirmButtonText: "OK",
       });
+      router.push("/pemupukan/realisasi/riwayat");
     } finally {
-      setLoadingInitial(false);
+      setLoading(false);
+      setInitialLoadingDone(true);
     }
-  };
+  }
 
   useEffect(() => {
     if (!idParam) {
       Swal.fire({
-        title: "ID tidak valid",
-        text: "Parameter ID tidak ditemukan di URL.",
+        title: "ID tidak ditemukan",
+        text: "Parameter ?id diperlukan untuk mengedit realisasi.",
         icon: "error",
         confirmButtonText: "OK",
       }).then(() => {
-        router.push("/pemupukan/rencana/riwayat");
+        router.push("/pemupukan/realisasi/riwayat");
       });
       return;
     }
@@ -259,24 +249,33 @@ function RencanaEditContent() {
     if (!Number.isFinite(idNum) || idNum <= 0) {
       Swal.fire({
         title: "ID tidak valid",
-        text: "Parameter ID pada URL tidak valid.",
+        text: "ID realisasi tidak valid.",
         icon: "error",
         confirmButtonText: "OK",
       }).then(() => {
-        router.push("/pemupukan/rencana/riwayat");
+        router.push("/pemupukan/realisasi/riwayat");
       });
       return;
     }
 
-    loadData(idNum);
+    fetchRecord(idNum);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idParam]);
 
-  // ============ SUBMIT EDIT ============
+  // ========================= SUBMIT EDIT =========================
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.id) return;
+
+    if (!recordId) {
+      await Swal.fire({
+        title: "Data belum siap",
+        text: "Data realisasi belum selesai dimuat.",
+        icon: "warning",
+        confirmButtonText: "OK",
+      });
+      return;
+    }
 
     if (!form.kategori) {
       Swal.fire({
@@ -288,26 +287,37 @@ function RencanaEditContent() {
       return;
     }
 
+    if (!form.tanggal) {
+      Swal.fire({
+        title: "Tanggal belum diisi",
+        text: "Tanggal realisasi wajib diisi.",
+        icon: "warning",
+        confirmButtonText: "OK",
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
       const payload = {
-        id: form.id,
+        id: recordId,
         kategori: form.kategori,
         kebun: form.kebun,
         kode_kebun: form.kodeKebun.trim(),
-        tanggal: form.tanggal || null, // boleh null
+        tanggal: form.tanggal, // "YYYY-MM-DD" → backend parseTanggalIsoJakarta
         afd: form.afd,
         tt: form.tt.trim(),
         blok: form.blok.trim().toUpperCase(),
         luas: toNumberLoose(form.luas),
         inv: Math.round(toNumberLoose(form.inv)),
         jenis_pupuk: form.jenisPupuk,
+        // konsisten: default 1 jika kosong/0
         aplikasi: Number(toNumberLoose(form.aplikasi) || 1),
         dosis: toNumberLoose(form.dosis),
         kg_pupuk: toNumberLoose(form.kgPupuk),
       };
 
-      const res = await fetch("/api/pemupukan/rencana", {
+      const res = await fetch("/api/pemupukan/realisasi", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -316,27 +326,26 @@ function RencanaEditContent() {
       if (!res.ok) {
         const text = await res.text();
         console.error("Error response:", text);
-
         Swal.fire({
           title: "Gagal menyimpan",
           text:
             text ||
-            "Gagal mengupdate rencana pemupukan. Silakan cek kembali data atau hubungi admin.",
+            "Gagal mengupdate realisasi pemupukan. Silakan cek kembali data atau hubungi admin.",
           icon: "error",
           confirmButtonText: "OK",
         });
-
-        throw new Error(text || "Gagal mengupdate rencana");
+        return;
       }
 
       await Swal.fire({
         title: "Berhasil",
-        text: "Rencana pemupukan berhasil diperbarui.",
+        text: "Realisasi pemupukan berhasil diperbarui.",
         icon: "success",
         confirmButtonText: "OK",
       });
 
-      router.push("/pemupukan/rencana/riwayat");
+      // Setelah update, kembali ke riwayat
+      router.push("/pemupukan/realisasi/riwayat");
     } catch (err) {
       console.error(err);
       Swal.fire({
@@ -350,17 +359,17 @@ function RencanaEditContent() {
     }
   };
 
-  // ============ RENDER STATE LOADING / NOT FOUND ============
+  // ========================= RENDER =========================
 
-  if (loadingInitial) {
+  if (!initialLoadingDone && loading) {
     return (
       <section className="space-y-3">
         <SectionHeader
-          title="Edit Rencana Pemupukan"
-          desc="Memuat data rencana yang dipilih…"
+          title="Edit Realisasi Pemupukan"
+          desc="Memuat data realisasi untuk diedit…"
         />
         <Card className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.85)]">
-          <CardContent className="py-10 flex items-center justify-center text-sm text-emerald-50">
+          <CardContent className="py-10 flex items-center justify-center text-sm text-emerald-50/80">
             Memuat data…
           </CardContent>
         </Card>
@@ -368,59 +377,26 @@ function RencanaEditContent() {
     );
   }
 
-  if (!form.id) {
-    // kalau gagal load / tidak ada data
-    return (
-      <section className="space-y-3">
-        <SectionHeader
-          title="Edit Rencana Pemupukan"
-          desc="Data tidak ditemukan."
-        />
-        <Card className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.85)]">
-          <CardContent className="py-10 flex flex-col items-center justify-center gap-3 text-sm text-emerald-50">
-            <span>Data rencana tidak ditemukan atau sudah dihapus.</span>
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-2 border-emerald-600/70 text-emerald-50 hover:bg-emerald-900/70"
-              onClick={() => router.push("/pemupukan/rencana/riwayat")}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Kembali ke Riwayat Rencana
-            </Button>
-          </CardContent>
-        </Card>
-      </section>
-    );
-  }
-
-  // ============ RENDER FORM ============
-
   return (
-    <section id="rencana-edit" className="space-y-3 scroll-mt-24">
+    <section id="real-edit" className="space-y-3 scroll-mt-24">
       <SectionHeader
-        title="Rencana Pemupukan - Edit Data"
-        desc={`Edit data rencana pemupukan (ID: ${form.id})`}
+        title="Realisasi Pemupukan - Edit Data"
+        desc="Perbarui data realisasi yang sudah tersimpan di database."
       />
 
-      <div className="flex justify-between items-center mb-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="gap-2 border-emerald-600/70 text-emerald-50 hover:bg-emerald-900/70"
-          onClick={() => router.push("/pemupukan/rencana/riwayat")}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Kembali ke Riwayat
-        </Button>
-      </div>
-
       <Card className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.85)]">
-        <CardHeader className="pb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <CardHeader className="pb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-[13px] text-emerald-50">
-            Formulir Rencana (Edit)
+            Formulir Edit Realisasi
           </CardTitle>
+          {recordId && (
+            <p className="text-[11px] text-emerald-100/70">
+              ID Realisasi:{" "}
+              <span className="font-mono rounded-full border border-emerald-700/70 bg-slate-950/70 px-2 py-0.5 text-[10px]">
+                {recordId}
+              </span>
+            </p>
+          )}
         </CardHeader>
 
         <CardContent className="pt-3">
@@ -477,7 +453,6 @@ function RencanaEditContent() {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="col-span-12 md:col-span-4">
                   <label className="text-[11px] text-emerald-100/70">
                     Kode Kebun
@@ -491,10 +466,9 @@ function RencanaEditContent() {
                     className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
-
                 <div className="col-span-12 md:col-span-4">
                   <label className="text-[11px] text-emerald-100/70">
-                    Tanggal (opsional)
+                    Tanggal
                   </label>
                   <Input
                     type="date"
@@ -524,7 +498,6 @@ function RencanaEditContent() {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="col-span-6 md:col-span-3">
                   <label className="text-[11px] text-emerald-100/70">
                     TT (Tahun Tanam)
@@ -540,7 +513,6 @@ function RencanaEditContent() {
                     maxLength={4}
                   />
                 </div>
-
                 <div className="col-span-6 md:col-span-3">
                   <label className="text-[11px] text-emerald-100/70">
                     Blok
@@ -554,7 +526,6 @@ function RencanaEditContent() {
                     className="h-10 border-emerald-700/60 bg-slate-950/60 text-emerald-50 placeholder:text-emerald-200/40"
                   />
                 </div>
-
                 <div className="col-span-6 md:col-span-3">
                   <label className="text-[11px] text-emerald-100/70">
                     Luas (Ha)
@@ -709,9 +680,18 @@ function RencanaEditContent() {
                 type="button"
                 variant="outline"
                 className="gap-2 border-emerald-600/70 text-emerald-50 hover:bg-emerald-900/70"
-                onClick={resetToInitial}
+                onClick={reset}
               >
                 <RefreshCcw className="h-4 w-4" /> Reset ke Data Awal
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2 border-emerald-600/70 text-emerald-50 hover:bg-emerald-900/70"
+                onClick={() => router.push("/pemupukan/realisasi/riwayat")}
+              >
+                Kembali ke Riwayat
               </Button>
             </div>
           </form>
@@ -721,26 +701,26 @@ function RencanaEditContent() {
   );
 }
 
-/* ===================[ WRAPPER DENGAN SUSPENSE ]=================== */
+// ================== WRAPPER DENGAN SUSPENSE ===================
 
-export default function RencanaEditPage() {
+export default function RealisasiEditPage() {
   return (
     <Suspense
       fallback={
         <section className="space-y-3">
           <SectionHeader
-            title="Edit Rencana Pemupukan"
-            desc="Menyiapkan halaman edit rencana…"
+            title="Realisasi Pemupukan - Edit Data"
+            desc="Menyiapkan halaman edit realisasi…"
           />
           <Card className="glass-surface rounded-2xl border border-[--glass-border] shadow-[0_18px_45px_rgba(3,18,9,0.85)]">
-            <CardContent className="py-10 flex items-center justify-center text-sm text-emerald-50">
+            <CardContent className="py-10 flex items-center justify-center text-sm text-emerald-50/80">
               Memuat parameter dan data awal…
             </CardContent>
           </Card>
         </section>
       }
     >
-      <RencanaEditContent />
+      <RealisasiEditContent />
     </Suspense>
   );
 }

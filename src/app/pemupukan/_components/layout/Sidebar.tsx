@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import {
   Database,
   Calendar,
@@ -14,20 +14,22 @@ import {
 import { useRouter, usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 
-export default function Sidebar({
-  navRealOpen,
-  setNavRealOpen,
-  navRencanaOpen,
-  setNavRencanaOpen,
-  setFilterOpen,
-}: {
+type SidebarProps = {
   navRealOpen: boolean;
   setNavRealOpen: React.Dispatch<React.SetStateAction<boolean>>;
   navRencanaOpen: boolean;
   setNavRencanaOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setFilterOpen: (v: boolean) => void;
   bestKebun?: { kebun: string; rencana: number; progress: number };
-}) {
+};
+
+function Sidebar({
+  navRealOpen,
+  setNavRealOpen,
+  navRencanaOpen,
+  setNavRencanaOpen,
+  setFilterOpen,
+}: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -35,10 +37,8 @@ export default function Sidebar({
 
   // Begitu URL berubah (halaman baru sudah aktif) → matikan spinner
   useEffect(() => {
-    if (loading) {
-      setLoading(false);
-    }
-  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+    setLoading(false);
+  }, [pathname]);
 
   const navigateWithLoading = (href: string) => {
     setLoading(true);
@@ -230,3 +230,5 @@ export default function Sidebar({
     </>
   );
 }
+
+export default memo(Sidebar);

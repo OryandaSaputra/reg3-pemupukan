@@ -1,20 +1,25 @@
-// src/app/pemupukan/context.tsx
+// src/app/pemupukan/_state/context.tsx
 "use client";
 
 import React, {
   createContext,
   useContext,
-  useState,
   useEffect,
+  useState,
+  type ReactNode,
 } from "react";
-import { FertRow } from "./types";
+import type { FertRow } from "../_config/types";
 import {
   usePemupukanDerived,
-  TmTableRow,
-  Kategori,
+  type TmTableRow,
+  type Kategori,
 } from "./derive";
 
-type Ctx = {
+/* ======================================================================= */
+/* =============================== TYPES ================================= */
+/* ======================================================================= */
+
+type PemupukanContextValue = {
   // data
   rows: FertRow[];
   loading: boolean;
@@ -137,9 +142,11 @@ type Ctx = {
   metaLoading: boolean;
 };
 
-const PemupukanContext = createContext<Ctx | null>(null);
+const PemupukanContext = createContext<PemupukanContextValue | null>(null);
 
-/* ========================= META CLIENT CACHE ========================= */
+/* ======================================================================= */
+/* ========================= META CLIENT CACHE =========================== */
+/* ======================================================================= */
 
 type MetaResponse = {
   kategori: string[];
@@ -167,7 +174,9 @@ function buildMetaKey(distrik: string, kebun: string) {
 
 function applyMetaToState(
   data: MetaResponse,
-  setKategoriOptionsState: React.Dispatch<React.SetStateAction<(Kategori | "all")[]>>,
+  setKategoriOptionsState: React.Dispatch<
+    React.SetStateAction<(Kategori | "all")[]>
+  >,
   setAfdOptionsState: React.Dispatch<React.SetStateAction<string[]>>,
   setTtOptionsState: React.Dispatch<React.SetStateAction<string[]>>,
   setBlokOptionsState: React.Dispatch<React.SetStateAction<string[]>>,
@@ -178,7 +187,8 @@ function applyMetaToState(
   const kategoriList: (Kategori | "all")[] = [
     "all",
     ...data.kategori.filter(
-      (k): k is Kategori => k === "TM" || k === "TBM" || k === "BIBITAN"
+      (k): k is Kategori =>
+        k === "TM" || k === "TBM" || k === "BIBITAN",
     ),
   ];
 
@@ -191,11 +201,19 @@ function applyMetaToState(
   setDataYearOptionsState(data.years);
 }
 
-/* ========================= PROVIDER ========================= */
+/* ======================================================================= */
+/* =============================== PROVIDER ============================== */
+/* ======================================================================= */
 
-export function PemupukanProvider({ children }: { children: React.ReactNode }) {
-  const [rows] = useState<FertRow[]>([]);
-  const [loading] = useState(true);
+type PemupukanProviderProps = {
+  children: ReactNode;
+};
+
+export function PemupukanProvider({ children }: PemupukanProviderProps) {
+  // Saat ini rows & loading belum diisi dari API, jadi cukup konstanta.
+  // Kalau nanti ada fetch data, tinggal ganti ke useState/useEffect.
+  const rows: FertRow[] = [];
+  const loading = true;
 
   // sidebar & nav
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -227,13 +245,15 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
   const [afdOptionsState, setAfdOptionsState] = useState<string[]>([]);
   const [ttOptionsState, setTtOptionsState] = useState<string[]>([]);
   const [blokOptionsState, setBlokOptionsState] = useState<string[]>([]);
-  const [jenisOptionsState, setJenisOptionsState] = useState<string[]>(["all"]);
-  const [aplikasiOptionsState, setAplikasiOptionsState] = useState<string[]>([
+  const [jenisOptionsState, setJenisOptionsState] = useState<string[]>([
     "all",
   ]);
-  const [dataYearOptionsState, setDataYearOptionsState] = useState<string[]>(
-    []
-  );
+  const [aplikasiOptionsState, setAplikasiOptionsState] = useState<
+    string[]
+  >(["all"]);
+  const [dataYearOptionsState, setDataYearOptionsState] = useState<
+    string[]
+  >([]);
 
   // ✅ loading meta
   const [metaLoading, setMetaLoading] = useState<boolean>(false);
@@ -251,9 +271,8 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
     dateTo,
   });
 
-  // Ambil opsi kategori/afd/tt/blok/jenis/aplikasi/tahun dari API
-  // - Tanpa param → global (semua data)
-  // - Dengan distrik/kebun → opsi ter-filter
+  /* ======================= FETCH META + CACHE ======================= */
+
   useEffect(() => {
     const controller = new AbortController();
     const key = buildMetaKey(distrik, kebun);
@@ -275,7 +294,7 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
             setBlokOptionsState,
             setJenisOptionsState,
             setAplikasiOptionsState,
-            setDataYearOptionsState
+            setDataYearOptionsState,
           );
           return;
         }
@@ -283,7 +302,6 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
         // 2) tidak ada/expired → fetch ke API
         const params = new URLSearchParams();
 
-        // kalau distrik/kebun != "all" → kirim sebagai filter
         if (distrik && distrik !== "all") {
           params.set("distrik", distrik);
         }
@@ -314,7 +332,7 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
           setBlokOptionsState,
           setJenisOptionsState,
           setAplikasiOptionsState,
-          setDataYearOptionsState
+          setDataYearOptionsState,
         );
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
@@ -333,6 +351,8 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
     };
   }, [distrik, kebun]);
 
+  /* =========================== RESET FILTER ========================== */
+
   const resetFilter = () => {
     setDistrik("all");
     setKebun("all");
@@ -347,7 +367,9 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
     setDateTo("");
   };
 
-  const value: Ctx = {
+  /* ============================= VALUE =============================== */
+
+  const value: PemupukanContextValue = {
     rows,
     loading,
 
@@ -391,7 +413,6 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
     // options
     distrikOptions: derived.distrikOptions,
     kebunOptions: derived.kebunOptions,
-
     jenisOptions: jenisOptionsState,
     aplikasiOptions: aplikasiOptionsState,
     kategoriOptions: kategoriOptionsState,
@@ -431,7 +452,7 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
     realWindow: derived.realWindow,
     realCutoffDate: derived.realCutoffDate,
 
-    // ✅ kirim ke consumer (Frame + FilterPanel)
+    // status meta
     metaLoading,
   };
 
@@ -441,6 +462,10 @@ export function PemupukanProvider({ children }: { children: React.ReactNode }) {
     </PemupukanContext.Provider>
   );
 }
+
+/* ======================================================================= */
+/* =============================== HOOK ================================== */
+/* ======================================================================= */
 
 export function usePemupukan() {
   const ctx = useContext(PemupukanContext);

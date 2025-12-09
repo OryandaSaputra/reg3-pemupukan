@@ -1,4 +1,4 @@
-// src/app/pemupukan/derive.ts
+// src/app/pemupukan/_state/derive.ts
 import { useMemo, useCallback } from "react";
 import {
   KEBUN_LABEL,
@@ -6,9 +6,9 @@ import {
   ORDER_DBR,
   LABEL_PUPUK,
   PUPUK_KEYS,
-} from "./constants";
-import { FertRow, PupukKey } from "./types";
-import { sum } from "./utils";
+} from "../_config/constants";
+import type { FertRow, PupukKey } from "../_config/types";
+import { sum } from "../utils";
 
 export type Kategori = "TM" | "TBM" | "BIBITAN";
 
@@ -69,17 +69,15 @@ export type TmTableRow = {
 
 // ==================== HELPER TANGGAL (ASIA/JAKARTA) ====================
 
-const todayISOJakarta = (base = new Date()): string => {
-  return new Intl.DateTimeFormat("en-CA", {
+const todayISOJakarta = (base = new Date()): string =>
+  new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jakarta",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(base); // "YYYY-MM-DD"
-};
 
 const addDaysJakarta = (iso: string, delta: number): string => {
-  // iso: "YYYY-MM-DD"
   const d = new Date(`${iso}T00:00:00+07:00`);
   d.setDate(d.getDate() + delta);
   return todayISOJakarta(d);
@@ -102,7 +100,24 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
   // Cast sekali di awal supaya bisa pakai field meta opsional
   const rowsEx = rows as FertRowWithMeta[];
 
-  // ================= OPTIONS =================
+  /* =================================================================== */
+  /* ======================== COMMON BASE ARRAYS ======================= */
+  /* =================================================================== */
+
+  // Satu kali filter dasar berdasarkan distrik & kebun untuk dipakai di options
+  const baseByDistrikKebun = useMemo(
+    () =>
+      rowsEx.filter(
+        (r) =>
+          (distrik === "all" || r.distrik === distrik) &&
+          (kebun === "all" || r.kebun === kebun),
+      ),
+    [rowsEx, distrik, kebun],
+  );
+
+  /* =================================================================== */
+  /* =============================== OPTIONS =========================== */
+  /* =================================================================== */
 
   // Distrik diambil dari data (fallback: DTM/DBR)
   const distrikOptions = useMemo(() => {
@@ -110,8 +125,8 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
       new Set(
         rowsEx
           .map((r) => r.distrik)
-          .filter((v): v is "DTM" | "DBR" => !!v)
-      )
+          .filter((v): v is "DTM" | "DBR" => !!v),
+      ),
     ).sort();
     return ds.length ? ds : ["DTM", "DBR"];
   }, [rowsEx]);
@@ -126,64 +141,56 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
 
   // Kategori berdasarkan data & kebun yang dipilih
   const kategoriOptions = useMemo<(Kategori | "all")[]>(() => {
-    const base = rowsEx.filter(
-      (r) =>
-        (distrik === "all" || r.distrik === distrik) &&
-        (kebun === "all" || r.kebun === kebun)
-    );
     const set = new Set<Kategori>();
-    base.forEach((r) => {
+    baseByDistrikKebun.forEach((r) => {
       if (r.kategori) set.add(r.kategori);
     });
     const arr = Array.from(set).sort();
     return ["all", ...arr];
-  }, [rowsEx, distrik, kebun]);
+  }, [baseByDistrikKebun]);
 
   // AFD, TT, Blok berdasarkan distrik & kebun
-  const afdOptions = useMemo(() => {
-    const base = rowsEx.filter(
-      (r) =>
-        (distrik === "all" || r.distrik === distrik) &&
-        (kebun === "all" || r.kebun === kebun)
-    );
-    return Array.from(
-      new Set(base.map((r) => r.afd).filter((v): v is string => !!v))
-    ).sort();
-  }, [rowsEx, distrik, kebun]);
+  const afdOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          baseByDistrikKebun
+            .map((r) => r.afd)
+            .filter((v): v is string => !!v),
+        ),
+      ).sort(),
+    [baseByDistrikKebun],
+  );
 
-  const ttOptions = useMemo(() => {
-    const base = rowsEx.filter(
-      (r) =>
-        (distrik === "all" || r.distrik === distrik) &&
-        (kebun === "all" || r.kebun === kebun)
-    );
-    return Array.from(
-      new Set(base.map((r) => r.tt).filter((v): v is string => !!v))
-    ).sort();
-  }, [rowsEx, distrik, kebun]);
+  const ttOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          baseByDistrikKebun
+            .map((r) => r.tt)
+            .filter((v): v is string => !!v),
+        ),
+      ).sort(),
+    [baseByDistrikKebun],
+  );
 
-  const blokOptions = useMemo(() => {
-    const base = rowsEx.filter(
-      (r) =>
-        (distrik === "all" || r.distrik === distrik) &&
-        (kebun === "all" || r.kebun === kebun)
-    );
-    return Array.from(
-      new Set(base.map((r) => r.blok).filter((v): v is string => !!v))
-    ).sort();
-  }, [rowsEx, distrik, kebun]);
+  const blokOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          baseByDistrikKebun
+            .map((r) => r.blok)
+            .filter((v): v is string => !!v),
+        ),
+      ).sort(),
+    [baseByDistrikKebun],
+  );
 
   // Jenis pupuk dinamis dari data (berdasarkan distrik & kebun)
   const jenisOptions = useMemo(() => {
-    const base = rowsEx.filter(
-      (r) =>
-        (distrik === "all" || r.distrik === distrik) &&
-        (kebun === "all" || r.kebun === kebun)
-    );
-
     const set = new Set<string>();
 
-    base.forEach((r) => {
+    baseByDistrikKebun.forEach((r) => {
       const addIf = (label: string, v: number) => {
         if (v > 0) set.add(label);
       };
@@ -200,31 +207,22 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
       addIf("RP", (r.real_rp ?? 0) + (r.rencana_rp ?? 0));
       addIf(
         "DOLOMITE",
-        (r.real_dolomite ?? 0) + (r.rencana_dolomite ?? 0)
+        (r.real_dolomite ?? 0) + (r.rencana_dolomite ?? 0),
       );
-      addIf(
-        "BORATE",
-        (r.real_borate ?? 0) + (r.rencana_borate ?? 0)
-      );
+      addIf("BORATE", (r.real_borate ?? 0) + (r.rencana_borate ?? 0));
       addIf("CuSO4", (r.real_cuso4 ?? 0) + (r.rencana_cuso4 ?? 0));
       addIf("ZnSO4", (r.real_znso4 ?? 0) + (r.rencana_znso4 ?? 0));
     });
 
     const arr = Array.from(set).sort();
     return ["all", ...arr];
-  }, [rowsEx, distrik, kebun]);
+  }, [baseByDistrikKebun]);
 
   // Opsi aplikasi (1/2/3)
   const aplikasiOptions = useMemo(() => {
-    const base = rowsEx.filter(
-      (r) =>
-        (distrik === "all" || r.distrik === distrik) &&
-        (kebun === "all" || r.kebun === kebun)
-    );
-
     const set = new Set<string>();
 
-    base.forEach((r) => {
+    baseByDistrikKebun.forEach((r) => {
       if (r.aplikasiKe != null && Number.isFinite(r.aplikasiKe)) {
         set.add(String(r.aplikasiKe)); // "1", "2", "3"
       }
@@ -232,101 +230,108 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
 
     const arr = Array.from(set).sort((a, b) => Number(a) - Number(b));
     return ["all", ...arr]; // ["all", "1", "2", "3"]
-  }, [rowsEx, distrik, kebun]);
+  }, [baseByDistrikKebun]);
 
-  // ================= FILTERED ROWS =================
+  /* =================================================================== */
+  /* ============================ FILTERED ============================= */
+  /* =================================================================== */
 
-  const filtered = useMemo(() => {
-    return rowsEx.filter((r) => {
-      const passDistrik = distrik === "all" || r.distrik === distrik;
-      const passKebun = kebun === "all" || r.kebun === kebun;
+  const filtered = useMemo(
+    () =>
+      rowsEx.filter((r) => {
+        const passDistrik = distrik === "all" || r.distrik === distrik;
+        const passKebun = kebun === "all" || r.kebun === kebun;
 
-      const passKategori =
-        kategori === "all" || (r.kategori && r.kategori === kategori);
+        const passKategori =
+          kategori === "all" || (r.kategori && r.kategori === kategori);
 
-      const passAfd = afd === "all" || afd === "" || r.afd === afd;
-      const passTt = tt === "all" || tt === "" || r.tt === tt;
-      const passBlok =
-        blok === "all" || blok === "" || r.blok === blok.toUpperCase();
+        const passAfd = afd === "all" || afd === "" || r.afd === afd;
+        const passTt = tt === "all" || tt === "" || r.tt === tt;
+        const passBlok =
+          blok === "all" || blok === "" || r.blok === blok.toUpperCase();
 
-      const passJenis =
-        jenis === "all"
-          ? true
-          : (() => {
-              const j = jenis.toUpperCase();
-              const jumlahPerJenis: Record<string, number> = {
-                "NPK 13.6.27.4":
-                  (r.real_npk ?? 0) + (r.rencana_npk ?? 0),
-                "NPK 12.12.17.2":
-                  (r.real_npk ?? 0) + (r.rencana_npk ?? 0),
-                UREA: (r.real_urea ?? 0) + (r.rencana_urea ?? 0),
-                TSP: (r.real_tsp ?? 0) + (r.rencana_tsp ?? 0),
-                MOP: (r.real_mop ?? 0) + (r.rencana_mop ?? 0),
-                RP: (r.real_rp ?? 0) + (r.rencana_rp ?? 0),
-                DOLOMITE:
-                  (r.real_dolomite ?? 0) + (r.rencana_dolomite ?? 0),
-                BORATE:
-                  (r.real_borate ?? 0) + (r.rencana_borate ?? 0),
-                CUSO4:
-                  (r.real_cuso4 ?? 0) + (r.rencana_cuso4 ?? 0),
-                ZNSO4:
-                  (r.real_znso4 ?? 0) + (r.rencana_znso4 ?? 0),
-              };
-              const totalJenis = jumlahPerJenis[j] ?? 0;
-              return totalJenis > 0;
-            })();
+        const passJenis =
+          jenis === "all"
+            ? true
+            : (() => {
+                const j = jenis.toUpperCase();
+                const jumlahPerJenis: Record<string, number> = {
+                  "NPK 13.6.27.4":
+                    (r.real_npk ?? 0) + (r.rencana_npk ?? 0),
+                  "NPK 12.12.17.2":
+                    (r.real_npk ?? 0) + (r.rencana_npk ?? 0),
+                  UREA: (r.real_urea ?? 0) + (r.rencana_urea ?? 0),
+                  TSP: (r.real_tsp ?? 0) + (r.rencana_tsp ?? 0),
+                  MOP: (r.real_mop ?? 0) + (r.rencana_mop ?? 0),
+                  RP: (r.real_rp ?? 0) + (r.rencana_rp ?? 0),
+                  DOLOMITE:
+                    (r.real_dolomite ?? 0) +
+                    (r.rencana_dolomite ?? 0),
+                  BORATE:
+                    (r.real_borate ?? 0) + (r.rencana_borate ?? 0),
+                  CUSO4:
+                    (r.real_cuso4 ?? 0) + (r.rencana_cuso4 ?? 0),
+                  ZNSO4:
+                    (r.real_znso4 ?? 0) + (r.rencana_znso4 ?? 0),
+                };
+                const totalJenis = jumlahPerJenis[j] ?? 0;
+                return totalJenis > 0;
+              })();
 
-      const passDate = (() => {
-        if (!r.tanggal) {
-          // kalau user pakai filter tanggal, baris tanpa tanggal di-skip
-          if (dateFrom || dateTo) return false;
+        const passDate = (() => {
+          if (!r.tanggal) {
+            // kalau user pakai filter tanggal, baris tanpa tanggal di-skip
+            if (dateFrom || dateTo) return false;
+            return true;
+          }
+
+          const t = r.tanggal; // "YYYY-MM-DD"
+          const hasDateRange = !!dateFrom || !!dateTo;
+
+          if (hasDateRange) {
+            const geFrom = !dateFrom || t >= dateFrom;
+            const leTo = !dateTo || t <= dateTo;
+            return geFrom && leTo;
+          }
+
           return true;
-        }
+        })();
 
-        const t = r.tanggal; // "YYYY-MM-DD"
-        const hasDateRange = !!dateFrom || !!dateTo;
+        // NOTE:
+        // Di level baris, kita TIDAK lagi mem-filter berdasarkan aplikasi,
+        // karena data per baris berisi total semua aplikasi (tm_realisasi, realisasi_total, dst).
+        // Filter aplikasi dipakai di level agregasi (KPI & tabel) menggunakan Apps.real_appX.
+        const passAplikasiBaris = true;
 
-        if (hasDateRange) {
-          const geFrom = !dateFrom || t >= dateFrom;
-          const leTo = !dateTo || t <= dateTo;
-          return geFrom && leTo;
-        }
+        return (
+          passDistrik &&
+          passKebun &&
+          passKategori &&
+          passAfd &&
+          passTt &&
+          passBlok &&
+          passJenis &&
+          passAplikasiBaris &&
+          passDate
+        );
+      }),
+    [
+      rowsEx,
+      distrik,
+      kebun,
+      kategori,
+      afd,
+      tt,
+      blok,
+      jenis,
+      dateFrom,
+      dateTo,
+    ],
+  );
 
-        return true;
-      })();
-
-      // NOTE:
-      // Di level baris, kita TIDAK lagi mem-filter berdasarkan aplikasi,
-      // karena data per baris berisi total semua aplikasi (tm_realisasi, realisasi_total, dst).
-      // Filter aplikasi dipakai di level agregasi (KPI & tabel) menggunakan Apps.real_appX.
-      const passAplikasiBaris = true;
-
-      return (
-        passDistrik &&
-        passKebun &&
-        passKategori &&
-        passAfd &&
-        passTt &&
-        passBlok &&
-        passJenis &&
-        passAplikasiBaris &&
-        passDate
-      );
-    });
-  }, [
-    rowsEx,
-    distrik,
-    kebun,
-    kategori,
-    afd,
-    tt,
-    blok,
-    jenis,
-    dateFrom,
-    dateTo,
-  ]);
-
-  // ================= HELPER REALISASI BERDASARKAN APLIKASI =================
+  /* =================================================================== */
+  /* ================= HELPER REALISASI BERDASARKAN APLIKASI =========== */
+  /* =================================================================== */
 
   // Ambil realisasi TOTAL (semua kategori) per baris sesuai aplikasi yang dipilih
   const pickRealByAplikasi = useCallback(
@@ -347,7 +352,7 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
       // fallback ke total asli
       return r.realisasi_total ?? 0;
     },
-    [aplikasi]
+    [aplikasi],
   );
 
   // Ambil realisasi TM per baris sesuai aplikasi yang dipilih
@@ -376,17 +381,17 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
       // "all"
       return baseTm;
     },
-    [aplikasi]
+    [aplikasi],
   );
 
-  // ================= PERIODE REALISASI (berdasarkan data TERFILTER) =================
+  /* =================================================================== */
+  /* ============== PERIODE REALISASI (berdasarkan filtered) =========== */
+  /* =================================================================== */
 
-  // Hanya kalau user pilih dateFrom/dateTo kita batasi perhitungan realisasi.
   const hasDateRange = !!dateFrom || !!dateTo;
   const limitByPeriod = hasDateRange;
 
   const { realStartISO, realEndISO } = useMemo(() => {
-    // ambil semua tanggal dari DATA YANG SUDAH TERFILTER (sudah kena distrik, kebun, dll.)
     const dates = filtered
       .map((r) => r.tanggal)
       .filter((v): v is string => !!v)
@@ -395,14 +400,12 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
     const today = todayISOJakarta();
 
     if (!dates.length) {
-      // kalau tidak ada tanggal sama sekali → pakai hari ini
       return { realStartISO: today, realEndISO: today };
     }
 
-    let start = dates[0]; // tanggal paling kecil
-    let end = dates[dates.length - 1]; // tanggal paling besar
+    let start = dates[0];
+    let end = dates[dates.length - 1];
 
-    // Jika user pilih dateFrom/dateTo, override pakai range yang diminta
     if (hasDateRange) {
       if (dateFrom) start = dateFrom;
       if (dateTo) end = dateTo;
@@ -411,11 +414,13 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
     return { realStartISO: start, realEndISO: end };
   }, [filtered, hasDateRange, dateFrom, dateTo]);
 
-  // ================= KPI (VERSI DASAR, SEBELUM OVERRIDE DARI ROW) =================
+  /* =================================================================== */
+  /* ======================== KPI DASAR (BASE) ========================= */
+  /* =================================================================== */
 
   const totalRencanaBase = useMemo(
     () => sum(filtered, (r) => r.rencana_total),
-    [filtered]
+    [filtered],
   );
 
   // TOTAL realisasi mengikuti filter aplikasi
@@ -423,42 +428,32 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
     () =>
       filtered.reduce(
         (acc, r) => acc + pickRealByAplikasi(r as FertRowWithMeta),
-        0
+        0,
       ),
-    [filtered, pickRealByAplikasi]
+    [filtered, pickRealByAplikasi],
   );
 
-  // const tmRencanaBase = useMemo(
-  //   () => sum(filtered, (r) => r.tm_rencana),
-  //   [filtered]
-  // );
-
-  // TM realisasi mengikuti filter aplikasi
   const tmRealisasiBase = useMemo(
     () =>
       filtered.reduce(
         (acc, r) => acc + pickTmRealByAplikasi(r as FertRowWithMeta),
-        0
+        0,
       ),
-    [filtered, pickTmRealByAplikasi]
+    [filtered, pickTmRealByAplikasi],
   );
 
-  // const tbmRencanaBase = useMemo(
-  //   () => sum(filtered, (r) => r.tbm_rencana),
-  //   [filtered]
-  // );
   const tbmRealisasiBase = useMemo(
     () => sum(filtered, (r) => r.tbm_realisasi),
-    [filtered]
+    [filtered],
   );
 
   const bibRencana = useMemo(
     () => sum(filtered, (r) => r.bibitan_rencana),
-    [filtered]
+    [filtered],
   );
   const bibRealisasi = useMemo(
     () => sum(filtered, (r) => r.bibitan_realisasi),
-    [filtered]
+    [filtered],
   );
 
   const isDTM = (r: FertRowWithMeta) =>
@@ -466,35 +461,40 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
   const isDBR = (r: FertRowWithMeta) =>
     r.distrik === "DBR" || r.is_dbr || r.wilayah === "DBR";
 
+  const filteredDTM = useMemo(
+    () => filtered.filter(isDTM),
+    [filtered],
+  );
+  const filteredDBR = useMemo(
+    () => filtered.filter(isDBR),
+    [filtered],
+  );
+
   const dtmRencana = useMemo(
-    () => sum(filtered.filter(isDTM), (r) => r.rencana_total),
-    [filtered]
+    () => sum(filteredDTM, (r) => r.rencana_total),
+    [filteredDTM],
   );
   const dbrRencana = useMemo(
-    () => sum(filtered.filter(isDBR), (r) => r.rencana_total),
-    [filtered]
+    () => sum(filteredDBR, (r) => r.rencana_total),
+    [filteredDBR],
   );
 
   // DTM/DBR realisasi juga mengikuti filter aplikasi
   const dtmRealisasi = useMemo(
     () =>
-      filtered
-        .filter(isDTM)
-        .reduce(
-          (acc, r) => acc + pickRealByAplikasi(r as FertRowWithMeta),
-          0
-        ),
-    [filtered, pickRealByAplikasi]
+      filteredDTM.reduce(
+        (acc, r) => acc + pickRealByAplikasi(r as FertRowWithMeta),
+        0,
+      ),
+    [filteredDTM, pickRealByAplikasi],
   );
   const dbrRealisasi = useMemo(
     () =>
-      filtered
-        .filter(isDBR)
-        .reduce(
-          (acc, r) => acc + pickRealByAplikasi(r as FertRowWithMeta),
-          0
-        ),
-    [filtered, pickRealByAplikasi]
+      filteredDBR.reduce(
+        (acc, r) => acc + pickRealByAplikasi(r as FertRowWithMeta),
+        0,
+      ),
+    [filteredDBR, pickRealByAplikasi],
   );
 
   // Progress per kebun juga ikut aplikasi
@@ -511,14 +511,14 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
           progress: ren ? (real / ren) * 100 : 0,
         };
       }),
-    [filtered, pickRealByAplikasi]
+    [filtered, pickRealByAplikasi],
   );
 
   const bestKebun = useMemo(
     () =>
       [...kebunProgress].sort((a, b) => b.progress - a.progress)[0] ||
       undefined,
-    [kebunProgress]
+    [kebunProgress],
   );
 
   const pieTotal = useMemo(() => {
@@ -547,7 +547,7 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
   const barPerKebun = useMemo(
     () =>
       [...kebunProgress].sort((a, b) => b.rencana - a.rencana).slice(0, 20),
-    [kebunProgress]
+    [kebunProgress],
   );
 
   const barEfisiensiDistrik = useMemo(() => {
@@ -555,6 +555,7 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
       string,
       { rencana: number; realisasi: number }
     >();
+
     filtered.forEach((r) => {
       const key = r.distrik || "-";
       const curr = byDistrik.get(key) || { rencana: 0, realisasi: 0 };
@@ -562,6 +563,7 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
       curr.realisasi += pickRealByAplikasi(r as FertRowWithMeta);
       byDistrik.set(key, curr);
     });
+
     return Array.from(byDistrik.entries())
       .map(([d, v]) => ({
         distrik: d,
@@ -572,7 +574,9 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
       .sort((a, b) => b.progress - a.progress);
   }, [filtered, pickRealByAplikasi]);
 
-  // ================= AGG PUPUK =================
+  /* =================================================================== */
+  /* ============================ AGG PUPUK ============================ */
+  /* =================================================================== */
 
   const aggPupuk = useMemo(() => {
     const initPair = () => ({ rencana: 0, real: 0 });
@@ -651,10 +655,13 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
     }));
   }, [filtered]);
 
-  // ================= STOK vs SISA =================
+  /* =================================================================== */
+  /* ========================= STOK vs SISA ============================ */
+  /* =================================================================== */
 
   const stokVsSisa = useMemo(() => {
     const byDistrik = new Map<string, { stok: number; sisa: number }>();
+
     filtered.forEach((r) => {
       const d = r.distrik || "-";
       const curr = byDistrik.get(d) || { stok: 0, sisa: 0 };
@@ -662,6 +669,7 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
       curr.sisa += r.sisa_kebutuhan || 0;
       byDistrik.set(d, curr);
     });
+
     return Array.from(byDistrik.entries())
       .map(([d, v]) => {
         const total = Math.max(1, v.stok + v.sisa);
@@ -676,25 +684,26 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
       .filter((x) => x.stok > 0 || x.sisa > 0);
   }, [filtered]);
 
-  // ==================== TANGGAL UNTUK TABEL TM/TBM/TM&TBM ====================
+  /* =================================================================== */
+  /* ==================== TANGGAL TABEL TM/TBM/TM&TBM ================== */
+  /* =================================================================== */
 
   const todayISO = todayISOJakarta();
   const tomorrowISO = addDaysJakarta(todayISO, 1);
 
-  // =============== DEBUG: hanya kalau limitByPeriod = true ==============
-
+  // DEBUG hanya ketika limitByPeriod = true
   if (process.env.NODE_ENV !== "production" && limitByPeriod) {
     const debugRows = filtered.filter(
       (r) =>
         r.tanggal &&
         (!realStartISO || r.tanggal >= realStartISO) &&
-        (!realEndISO || r.tanggal <= realEndISO)
+        (!realEndISO || r.tanggal <= realEndISO),
     );
 
     if (debugRows.length > 0) {
       console.groupCollapsed(
         "[Pemupukan] DEBUG Realisasi Periode",
-        `window: ${realStartISO} s.d. ${realEndISO}`
+        `window: ${realStartISO} s.d. ${realEndISO}`,
       );
       console.table(
         debugRows.map((r) => ({
@@ -703,18 +712,20 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
           tm_realisasi: r.tm_realisasi ?? 0,
           tbm_realisasi: r.tbm_realisasi ?? 0,
           real_total: r.realisasi_total ?? 0,
-        }))
+        })),
       );
       console.groupEnd();
     } else {
       console.info(
         "[Pemupukan] DEBUG Realisasi Periode: tidak ada baris dalam window ini",
-        `window: ${realStartISO} s.d. ${realEndISO}`
+        `window: ${realStartISO} s.d. ${realEndISO}`,
       );
     }
   }
 
-  // ==================== TABEL TM/TBM/TM&TBM ====================
+  /* =================================================================== */
+  /* ===================== TABEL TM/TBM/TM&TBM ========================= */
+  /* =================================================================== */
 
   type Agg = {
     app1_rencana: number;
@@ -727,7 +738,7 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
     real_today: number;
     rencana_tomorrow: number;
     jumlah_rencana_total: number;
-    real_last5_total: number; // total realisasi (per periode / semua)
+    real_last5_total: number;
   };
 
   type Mode = "TM" | "TBM" | "ALL";
@@ -780,8 +791,6 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
         const apps: Apps = r as unknown as Apps;
 
         // Realisasi periode:
-        // - kalau user pilih dateFrom/dateTo → batasi realStartISO–realEndISO
-        // - kalau tidak, ambil semua realisasi (jumlah seluruh tabel terfilter)
         if (limitByPeriod) {
           if (
             r.tanggal &&
@@ -800,7 +809,7 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
           g.app3_real += apps.real_app3 ?? 0;
         }
 
-        // Harian (hari ini & besok) tetap pakai tanggal hari ini / besok
+        // Harian (hari ini & besok)
         if (r.tanggal === todayISO) {
           g.rencana_today += renBase;
           g.real_today += realBase;
@@ -827,7 +836,6 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
         const hasRenApps =
           g.app1_rencana + g.app2_rencana + g.app3_rencana > 0;
 
-        // Kalau rencana per aplikasi belum diisi, bagi otomatis dari total rencana
         if (!hasRenApps && g.jumlah_rencana_total > 0) {
           const [a1, a2, a3] = split3(g.jumlah_rencana_total);
           g.app1_rencana = a1;
@@ -856,7 +864,7 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
       return keys.map((k, i) => {
         const g = by.get(k)!;
 
-        // nilai default: semua aplikasi
+        // default: semua aplikasi
         let app1_rencana = g.app1_rencana;
         let app2_rencana = g.app2_rencana;
         let app3_rencana = g.app3_rencana;
@@ -866,7 +874,7 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
         let jumlah_rencana_total = g.jumlah_rencana_total;
         let real_last5_total = g.real_last5_total;
 
-        // kalau user memilih aplikasi tertentu, kita hanya pakai aplikasi itu
+        // filter aplikasi di level agregasi tabel
         if (aplikasi === "1") {
           app2_rencana = 0;
           app3_rencana = 0;
@@ -889,11 +897,10 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
           jumlah_rencana_total = g.app3_rencana;
           real_last5_total = g.app3_real;
         }
-        // kalau "all", biarkan apa adanya (gabungan app1+app2+app3)
 
         return {
           no: i + 1,
-          kebun: k, // pakai kode kebun
+          kebun: k,
           app1_rencana,
           app1_real,
           app1_pct: pct(app1_real, app1_rencana),
@@ -920,22 +927,22 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
       realEndISO,
       limitByPeriod,
       aplikasi,
-    ]
+    ],
   );
 
   const tmRows = useMemo(() => buildRows("TM"), [buildRows]);
   const tbmRows = useMemo(() => buildRows("TBM"), [buildRows]);
   const tmTbmRows = useMemo(() => buildRows("ALL"), [buildRows]);
 
-  // ================= OVERRIDE KPI UNTUK IKHTISAR (BERDASARKAN ROW) =================
-  //
-  // Supaya angka di Ikhtisar SELALU SAMA dengan Jumlah TM/TBM di tabel
-  // dan otomatis mengikuti filter aplikasi (1 / 2 / 3 / all)
+  /* =================================================================== */
+  /* ===== OVERRIDE KPI IKHTISAR DARI ROWS (SUPAYA SELALU MATCH) ======= */
+  /* =================================================================== */
 
   const sumFromRows = (
-    rows: TmTableRow[],
-    selector: (r: TmTableRow) => number
-  ) => rows.reduce((acc, row) => acc + (selector(row) || 0), 0);
+    rowsTable: TmTableRow[],
+    selector: (r: TmTableRow) => number,
+  ) =>
+    rowsTable.reduce((acc, row) => acc + (selector(row) || 0), 0);
 
   const tmRencanaKpi = sumFromRows(tmRows, (r) => r.jumlah_rencana2025);
   const tmRealisasiKpi = sumFromRows(tmRows, (r) => r.jumlah_realSd0710);
@@ -945,7 +952,8 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
 
   // Total = TM + TBM + Bibitan (kalau ada)
   const totalRencanaKpi = tmRencanaKpi + tbmRencanaKpi + bibRencana;
-  const totalRealisasiKpi = tmRealisasiKpi + tbmRealisasiKpi + bibRealisasi;
+  const totalRealisasiKpi =
+    tmRealisasiKpi + tbmRealisasiKpi + bibRealisasi;
 
   return {
     // options & filtered
@@ -958,7 +966,8 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
     jenisOptions,
     aplikasiOptions,
     filtered,
-    // KPIs (SUDAH DI-OVERRIDE PAKAI ROWS)
+
+    // KPIs (sudah di-override dari rows tabel)
     totalRencana: totalRencanaKpi,
     totalRealisasi: totalRealisasiKpi,
     tmRencana: tmRencanaKpi,
@@ -971,6 +980,7 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
     dbrRencana,
     dtmRealisasi,
     dbrRealisasi,
+
     // charts & helpers
     kebunProgress,
     bestKebun,
@@ -980,6 +990,7 @@ export function usePemupukanDerived(rows: FertRow[], filters: Filters) {
     barEfisiensiDistrik,
     aggPupuk,
     stokVsSisa,
+
     // tabel TM/TBM/TM&TBM + info tanggal header
     tmRows,
     tbmRows,

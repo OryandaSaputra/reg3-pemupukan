@@ -1,19 +1,12 @@
 // src/lib/db.ts
-import { PrismaClient } from "@prisma/client";
+// File ini sekarang hanya menjadi "alias" dari src/lib/prisma.ts
+// supaya di seluruh project hanya ada SATU PrismaClient instance.
 
-// Gunakan global supaya di dev tidak bikin banyak koneksi
-const globalForPrisma = globalThis as unknown as {
-  prisma?: PrismaClient;
-};
-
-const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: ["error", "warn"],
-  });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+import prisma from "./prisma";
 
 export default prisma;
+
+// Jika ada kode lama yang pakai:
+//   import prisma from "@/lib/db";
+// semuanya tetap berjalan, tapi di balik layar
+// tetap memakai instance yang sama dari "@/lib/prisma".

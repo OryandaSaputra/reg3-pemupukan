@@ -1,112 +1,92 @@
-import SectionHeader from "../components/SectionHeader";
+// src/app/pemupukan/_components/dashboard/Ikhtisar.tsx
+import SectionHeader from "../shared/SectionHeader";
 import { Card, CardContent } from "@/components/ui/card";
 
-export default function Ikhtisar({
-  totals,
+type Totals = {
+  totalRencana: number;
+  totalRealisasi: number;
+  tmRencana: number;
+  tmRealisasi: number;
+  tbmRencana: number;
+  tbmRealisasi: number;
+  bibRencana: number;
+  bibRealisasi: number;
+  dtmRencana: number;
+  dbrRencana: number;
+  dtmRealisasi: number;
+  dbrRealisasi: number;
+};
+
+const num = (v: number) => v.toLocaleString("id-ID");
+
+const progressClass = (real: number, plan: number) =>
+  plan > 0 && real < plan ? "text-rose-400" : "text-emerald-300";
+
+const pctProgress = (real: number, plan: number) =>
+  plan > 0 ? ((real / plan) * 100).toFixed(2) : "0.00";
+
+const deltaClass = (real: number, plan: number) => {
+  const diff = real - plan;
+  if (diff < 0) return "text-rose-400";
+  if (diff > 0) return "text-emerald-300";
+  return "text-emerald-100/80";
+};
+
+const deltaLabel = (real: number, plan: number) => {
+  const diff = real - plan;
+  if (plan === 0 && real === 0) return "Belum ada rencana dan realisasi.";
+  if (plan === 0 && real > 0) return "Realisasi tanpa rencana.";
+  if (diff < 0) return "Belum tercapai.";
+  if (diff > 0) return "Melebihi rencana.";
+  return "Sesuai rencana.";
+};
+
+const formatDelta = (real: number, plan: number) => {
+  const diff = real - plan;
+  if (diff === 0) return "0 Kg";
+  const sign = diff > 0 ? "+" : "-";
+  return `${sign}${num(Math.abs(diff))} Kg`;
+};
+
+const ProgressBar = ({ real, plan }: { real: number; plan: number }) => {
+  const pct = plan > 0 ? Math.min((real / plan) * 100, 120) : 0;
+  const barWidth = Math.min(pct, 100);
+  const isBehind = plan > 0 && real < plan;
+
+  return (
+    <div className="w-full mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden">
+      <div
+        className={
+          "h-full rounded-full transition-all " +
+          (isBehind ? "bg-rose-400" : "bg-emerald-400")
+        }
+        style={{ width: `${barWidth}%` }}
+      />
+    </div>
+  );
+};
+
+const kpiCardCx = "rounded-2xl glass-surface overflow-visible";
+
+function ScopeCard({
+  shortLabel,
+  longLabel,
+  plan,
+  real,
 }: {
-  totals: {
-    totalRencana: number;
-    totalRealisasi: number;
-    tmRencana: number;
-    tmRealisasi: number;
-    tbmRencana: number;
-    tbmRealisasi: number;
-    bibRencana: number;
-    bibRealisasi: number;
-    dtmRencana: number;
-    dbrRencana: number;
-    dtmRealisasi: number;
-    dbrRealisasi: number;
-  };
-  realisasiHarian?: number;
-  rencanaBesok?: number;
-  tanggalHariIni?: string;
-  tanggalBesok?: string;
+  shortLabel: string;
+  longLabel: string;
+  plan: number;
+  real: number;
 }) {
-  const {
-    totalRencana,
-    totalRealisasi,
-    tmRencana,
-    tmRealisasi,
-    tbmRencana,
-    tbmRealisasi,
-    bibRencana,
-    bibRealisasi,
-    dtmRencana,
-    dbrRencana,
-    dtmRealisasi,
-    dbrRealisasi,
-  } = totals;
-
-  const num = (v: number) => v.toLocaleString("id-ID");
-
-  // KPI card bawah – fleksibel, tidak pakai h-full
-  const kpiCardCx =
-    "rounded-2xl glass-surface overflow-visible";
-
-  const progressClass = (real: number, plan: number) =>
-    plan > 0 && real < plan ? "text-rose-400" : "text-emerald-300";
-
-  const pctProgress = (real: number, plan: number) =>
-    plan > 0 ? ((real / plan) * 100).toFixed(2) : "0.00";
-
-  const deltaClass = (real: number, plan: number) => {
-    const diff = real - plan;
-    if (diff < 0) return "text-rose-400";
-    if (diff > 0) return "text-emerald-300";
-    return "text-emerald-100/80";
-  };
-
-  const deltaLabel = (real: number, plan: number) => {
-    const diff = real - plan;
-    if (plan === 0 && real === 0) return "Belum ada rencana dan realisasi.";
-    if (plan === 0 && real > 0) return "Realisasi tanpa rencana.";
-    if (diff < 0) return "Belum tercapai.";
-    if (diff > 0) return "Melebihi rencana.";
-    return "Sesuai rencana.";
-  };
-
-  const formatDelta = (real: number, plan: number) => {
-    const diff = real - plan;
-    if (diff === 0) return "0 Kg";
-    const sign = diff > 0 ? "+" : "-";
-    return `${sign}${num(Math.abs(diff))} Kg`;
-  };
-
-  const ProgressBar = ({ real, plan }: { real: number; plan: number }) => {
-    const pct = plan > 0 ? Math.min((real / plan) * 100, 120) : 0;
-    const barWidth = Math.min(pct, 100);
-    const isBehind = plan > 0 && real < plan;
-
-    return (
-      <div className="w-full mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden">
-        <div
-          className={
-            "h-full rounded-full transition-all " +
-            (isBehind ? "bg-rose-400" : "bg-emerald-400")
-          }
-          style={{ width: `${barWidth}%` }}
-        />
-      </div>
-    );
-  };
-
-  const renderScopeCard = (
-    shortLabel: string,
-    longLabel: string,
-    plan: number,
-    real: number
-  ) => (
+  return (
     <Card className="rounded-2xl glass-surface overflow-visible hover:shadow-[0_22px_55px_rgba(3,18,9,0.9)] transition-shadow">
-      {/* padding kanan sedikit lebih besar supaya angka tidak mepet */}
       <CardContent className="pt-4 pb-4 px-5 space-y-3 overflow-visible">
         <div>
           <div className="text-xs font-semibold text-emerald-50/95">
             {shortLabel}
           </div>
-          <p className="text-[11px] text-emerald-100/75 mt-0.5">
-            {longLabel}
-          </p>
+          <p className="text-[11px] text-emerald-100/75 mt-0.5">{longLabel}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -158,6 +138,31 @@ export default function Ikhtisar({
       </CardContent>
     </Card>
   );
+}
+
+export default function Ikhtisar({
+  totals,
+}: {
+  totals: Totals;
+  realisasiHarian?: number;
+  rencanaBesok?: number;
+  tanggalHariIni?: string;
+  tanggalBesok?: string;
+}) {
+  const {
+    totalRencana,
+    totalRealisasi,
+    tmRencana,
+    tmRealisasi,
+    tbmRencana,
+    tbmRealisasi,
+    bibRencana,
+    bibRealisasi,
+    dtmRencana,
+    dbrRencana,
+    dtmRealisasi,
+    dbrRealisasi,
+  } = totals;
 
   return (
     <section className="space-y-4">
@@ -168,19 +173,24 @@ export default function Ikhtisar({
 
       {/* Row Scope TM / TBM / Bibitan */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {renderScopeCard(
-          "TM",
-          "Tanaman Menghasilkan (TM)",
-          tmRencana,
-          tmRealisasi
-        )}
-        {renderScopeCard(
-          "TBM",
-          "Tanaman Belum Menghasilkan (TBM)",
-          tbmRencana,
-          tbmRealisasi
-        )}
-        {renderScopeCard("Bibitan", "Bibitan", bibRencana, bibRealisasi)}
+        <ScopeCard
+          shortLabel="TM"
+          longLabel="Tanaman Menghasilkan (TM)"
+          plan={tmRencana}
+          real={tmRealisasi}
+        />
+        <ScopeCard
+          shortLabel="TBM"
+          longLabel="Tanaman Belum Menghasilkan (TBM)"
+          plan={tbmRencana}
+          real={tbmRealisasi}
+        />
+        <ScopeCard
+          shortLabel="Bibitan"
+          longLabel="Bibitan"
+          plan={bibRencana}
+          real={bibRealisasi}
+        />
       </div>
 
       {/* 4 KPI cards di bawahnya */}
@@ -245,11 +255,7 @@ export default function Ikhtisar({
                 {formatDelta(dtmRealisasi, dtmRencana)}
               </span>
             </div>
-            <div
-              className={
-                "text-[11px] " + deltaClass(dtmRealisasi, dtmRencana)
-              }
-            >
+            <div className={"text-[11px] " + deltaClass(dtmRealisasi, dtmRencana)}>
               {deltaLabel(dtmRealisasi, dtmRencana)}
             </div>
           </CardContent>
@@ -287,11 +293,7 @@ export default function Ikhtisar({
                 {formatDelta(dbrRealisasi, dbrRencana)}
               </span>
             </div>
-            <div
-              className={
-                "text-[11px] " + deltaClass(dbrRealisasi, dbrRencana)
-              }
-            >
+            <div className={"text-[11px] " + deltaClass(dbrRealisasi, dbrRencana)}>
               {deltaLabel(dbrRealisasi, dbrRencana)}
             </div>
           </CardContent>

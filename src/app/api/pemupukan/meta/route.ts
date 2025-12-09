@@ -1,9 +1,23 @@
 // src/app/api/pemupukan/meta/route.ts
+'use server';
+
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
-import { ORDER_DTM, ORDER_DBR } from "@/app/pemupukan/constants";
+import { ORDER_DTM, ORDER_DBR } from "@/app/pemupukan/_config/constants";
 import { unstable_cache } from "next/cache";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/auth.config";
+
+/**
+ * Auth helper:
+ * Meta ini dipakai untuk filter di dashboard,
+ * jadi wajar kalau dibatasi hanya user yang sudah login.
+ */
+async function requireAuth() {
+  const session = await getServerSession(authOptions);
+  return session;
+}
 
 /**
  * Implementasi asli penghitungan meta (dipindah dari GET),
@@ -101,14 +115,16 @@ async function getMetaImpl(distrik: string, kebun: string) {
       where: whereReal,
       _count: { _all: true },
     }),
-    // tanggal (untuk Tahun Data)
+    // tanggal (untuk Tahun Data) – pakai distinct supaya tidak ambil semua duplikat
     prisma.rencanaPemupukan.findMany({
       where: whereRen,
       select: { tanggal: true },
+      distinct: ["tanggal"],
     }),
     prisma.realisasiPemupukan.findMany({
       where: whereReal,
       select: { tanggal: true },
+      distinct: ["tanggal"],
     }),
   ]);
 
@@ -185,7 +201,7 @@ const getMetaCached = unstable_cache(
   async (distrik: string, kebun: string) => {
     return getMetaImpl(distrik, kebun);
   },
-  ["pemupukan:meta"],
+  ["pemupukan:meta:get"],
   {
     revalidate: 300, // cache 5 menit (bisa diubah sesuai kebutuhan)
     tags: ["pemupukan:meta"],
@@ -193,17 +209,30 @@ const getMetaCached = unstable_cache(
 );
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const distrik = searchParams.get("distrik") ?? "all";
-  const kebun = searchParams.get("kebun") ?? "all";
+  try {
+    const session = await requireAuth();
+    if (!session) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
 
-  const meta = await getMetaCached(distrik, kebun);
+    const { searchParams } = new URL(req.url);
+    const distrik = searchParams.get("distrik") ?? "all";
+    const kebun = searchParams.get("kebun") ?? "all";
 
-  return NextResponse.json(meta, {
-    headers: {
-      // HTTP caching tambahan (CDN / browser) – tidak mengubah isi response
-      "Cache-Control":
-        "public, max-age=300, s-maxage=300, stale-while-revalidate=600",
-    },
-  });
+    const meta = await getMetaCached(distrik, kebun);
+
+    return NextResponse.json(meta, {
+      headers: {
+        // HTTP caching tambahan (CDN / browser)
+        "Cache-Control":
+          "public, max-age=300, s-maxage=300, stale-while-revalidate=600",
+      },
+    });
+  } catch (err) {
+    console.error("GET /api/pemupukan/meta error:", err);
+    return NextResponse.json(
+      { error: "Gagal mengambil meta pemupukan" },
+      { status: 500 }
+    );
+  }
 }

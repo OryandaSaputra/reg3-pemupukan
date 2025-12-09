@@ -1,14 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import SectionHeader from "../components/SectionHeader";
+import SectionHeader from "../../shared/SectionHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { KEBUN_LABEL, ORDER_DTM, ORDER_DBR } from "../constants";
-import { usePemupukan } from "../context";
+import { KEBUN_LABEL, ORDER_DTM, ORDER_DBR } from "../../../_config/constants";
+import { usePemupukan } from "../../../_state/context";
 import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
 type Kategori = "TM" | "TBM" | "BIBITAN";
 
@@ -128,6 +135,25 @@ function mapApiToHistoryRow(r: ApiRealisasi): HistoryRow {
   };
 }
 
+// Row → array untuk Excel
+function historyRowsToSheetBody(rows: HistoryRow[]): (string | number)[][] {
+  return rows.map((r) => [
+    r.tanggal,
+    r.kategori,
+    KEBUN_LABEL[r.kebun] ?? r.kebun,
+    r.kodeKebun,
+    r.afd,
+    r.tt,
+    r.blok,
+    r.luas ?? "",
+    r.inv ?? "",
+    r.jenisPupuk,
+    r.aplikasi ?? "",
+    r.dosis ?? "",
+    r.kgPupuk ?? "",
+  ]);
+}
+
 // GET semua realisasi (tanpa pagination) → dipakai untuk RIWAYAT & EXPORT
 async function fetchAllRealisasiForExport(): Promise<HistoryRow[]> {
   const now = Date.now();
@@ -163,7 +189,6 @@ export default function RealisasiRiwayat() {
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [total, setTotal] = useState(0);
   const [selectedKebun, setSelectedKebun] = useState<string>("");
 
   const router = useRouter();
@@ -206,12 +231,10 @@ export default function RealisasiRiwayat() {
         if (!active) return;
 
         setRows(allRows);
-        setTotal(allRows.length);
       } catch (err) {
         console.error(err);
         if (active) {
           setRows([]);
-          setTotal(0);
         }
       } finally {
         if (active) setLoading(false);
@@ -442,7 +465,6 @@ export default function RealisasiRiwayat() {
       }
 
       setRows((prev) => prev.filter((r) => r.id !== row.id));
-      setTotal((prev) => (prev > 0 ? prev - 1 : 0));
       // invalidasi cache lokal agar export berikutnya ambil data terbaru
       realisasiHistoryCache = null;
 
@@ -464,7 +486,7 @@ export default function RealisasiRiwayat() {
   };
 
   const handleDeleteAll = async () => {
-    if (total === 0) return;
+    if (rows.length === 0) return;
 
     const result = await Swal.fire({
       title: "Hapus semua data realisasi?",
@@ -505,7 +527,6 @@ export default function RealisasiRiwayat() {
       setRows([]);
       setQ("");
       setSelectedKebun("");
-      setTotal(0);
       realisasiHistoryCache = null;
 
       await Swal.fire({
@@ -580,9 +601,6 @@ export default function RealisasiRiwayat() {
       const deletedCount = json?.deletedCount ?? 0;
 
       setRows((prev) => prev.filter((r) => r.kebun !== selectedKebun));
-      setTotal((prev) =>
-        deletedCount > 0 ? Math.max(0, prev - deletedCount) : prev
-      );
       setSelectedKebun("");
       realisasiHistoryCache = null;
 
@@ -664,21 +682,7 @@ export default function RealisasiRiwayat() {
 
         const sheetData = [
           [...TABLE_HEADERS],
-          ...kebunRows.map((r) => [
-            r.tanggal,
-            r.kategori,
-            KEBUN_LABEL[r.kebun] ?? r.kebun,
-            r.kodeKebun,
-            r.afd,
-            r.tt,
-            r.blok,
-            r.luas ?? "",
-            r.inv ?? "",
-            r.jenisPupuk,
-            r.aplikasi ?? "",
-            r.dosis ?? "",
-            r.kgPupuk ?? "",
-          ]),
+          ...historyRowsToSheetBody(kebunRows),
         ];
 
         const ws = XLSX.utils.aoa_to_sheet(sheetData);
@@ -742,21 +746,7 @@ export default function RealisasiRiwayat() {
 
       const sheetData = [
         [...TABLE_HEADERS],
-        ...kebunRows.map((r) => [
-          r.tanggal,
-          r.kategori,
-          KEBUN_LABEL[r.kebun] ?? r.kebun,
-          r.kodeKebun,
-          r.afd,
-          r.tt,
-          r.blok,
-          r.luas ?? "",
-          r.inv ?? "",
-          r.jenisPupuk,
-          r.aplikasi ?? "",
-          r.dosis ?? "",
-          r.kgPupuk ?? "",
-        ]),
+        ...historyRowsToSheetBody(kebunRows),
       ];
 
       const ws = XLSX.utils.aoa_to_sheet(sheetData);
@@ -971,6 +961,8 @@ export default function RealisasiRiwayat() {
       ? `${KEBUN_LABEL[exportCurrentKebun] ?? exportCurrentKebun} (${exportCurrentKebun})`
       : "-";
 
+  const total = rows.length;
+
   return (
     <>
       {/* OVERLAY EXPORT FULL-SCREEN */}
@@ -1095,19 +1087,22 @@ export default function RealisasiRiwayat() {
               </div>
 
               <div className="flex flex-wrap gap-2 items-center">
-                <select
+                <Select
                   value={selectedKebun}
-                  onChange={(e) => setSelectedKebun(e.target.value)}
-                  disabled={exporting}
-                  className="h-9 px-2 text-[11px] rounded border border-slate-300 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+                  onValueChange={setSelectedKebun}
+                  disabled={loading || exporting}
                 >
-                  <option value="">Filter / Pilih kebun…</option>
-                  {kebunOptions.map((o) => (
-                    <option key={o.code} value={o.code}>
-                      {o.name} ({o.code})
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="h-9 w-[220px] glass-input text-[11px]">
+                    <SelectValue placeholder="Filter / Pilih kebun" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {kebunOptions.map((o) => (
+                      <SelectItem key={o.code} value={o.code}>
+                        {o.name} ({o.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
                 <button
                   type="button"
@@ -1129,9 +1124,15 @@ export default function RealisasiRiwayat() {
                 {/* === HEADER YANG SUDAH DIPERTEBAL & SOLID === */}
                 <thead className="sticky top-0 z-10 bg-white/90 dark:bg-slate-900/95 backdrop-blur-md text-slate-800 dark:text-slate-100 border-b border-white/20">
                   <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Tanggal</th>
-                    <th className="px-3 py-2 text-left font-semibold">Kategori</th>
-                    <th className="px-3 py-2 text-left font-semibold">Kebun</th>
+                    <th className="px-3 py-2 text-left font-semibold">
+                      Tanggal
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold">
+                      Kategori
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold">
+                      Kebun
+                    </th>
                     <th className="px-3 py-2 text-left font-semibold">
                       Kode Kebun
                     </th>
@@ -1154,7 +1155,9 @@ export default function RealisasiRiwayat() {
                     <th className="px-3 py-2 text-right font-semibold">
                       Kg Pupuk
                     </th>
-                    <th className="px-3 py-2 text-center font-semibold">Aksi</th>
+                    <th className="px-3 py-2 text-center font-semibold">
+                      Aksi
+                    </th>
                   </tr>
                 </thead>
 
@@ -1171,7 +1174,7 @@ export default function RealisasiRiwayat() {
 
                     return (
                       <tr
-                        key={`${r.id}-${virtualRow.index}`}
+                        key={r.id}
                         className="border-t border-white/10 hover:bg-white/10 dark:hover:bg-white/5 transition"
                       >
                         <td className="px-3 py-2">{r.tanggal}</td>

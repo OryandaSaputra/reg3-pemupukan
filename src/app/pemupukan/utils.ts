@@ -5,8 +5,8 @@ import {
   PTPN_GREEN_DARK,
   PTPN_ORANGE,
   PTPN_CREAM,
-} from "./constants";
-import { FertRow } from "./types";
+} from "./_config/constants";
+import { FertRow } from "./_config/types";
 
 export const sum = (arr: FertRow[], pick: (r: FertRow) => number | undefined) =>
   arr.reduce((a, b) => a + (pick(b) || 0), 0);

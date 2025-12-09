@@ -1,7 +1,8 @@
+// src/app/pemupukan/_components/dashboard/LogAktivitas.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import SectionHeader from "../components/SectionHeader";
+import { useEffect, useMemo, useState } from "react";
+import SectionHeader from "../shared/SectionHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 
@@ -36,6 +37,69 @@ type LogCacheEntry = {
 
 const LOG_CACHE_TTL = 60_000; // 60 detik
 let logCache: LogCacheEntry | null = null;
+
+/* ========================= HELPERS DI LUAR KOMPONEN ========================= */
+
+function formatTanggal(value: string | null) {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatTanggalHeaderFromDate(d: Date) {
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function groupByTanggal(data: LogItem[]): GroupedLog[] {
+  const map = new Map<string, { label: string; items: LogItem[] }>();
+
+  for (const item of data) {
+    const d = new Date(item.updatedAt);
+    if (Number.isNaN(d.getTime())) continue;
+
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const key = `${y}-${m}-${day}`;
+
+    const label = formatTanggalHeaderFromDate(d);
+
+    const existing = map.get(key);
+    if (existing) {
+      existing.items.push(item);
+    } else {
+      map.set(key, { label, items: [item] });
+    }
+  }
+
+  return Array.from(map.entries())
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // tanggal terbaru di atas
+    .map(([dateKey, { label, items }]) => ({
+      dateKey,
+      label,
+      items: items.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      ),
+    }));
+}
+
+/* ========================= KOMPONEN UTAMA ========================= */
 
 export default function LogAktivitas() {
   const [items, setItems] = useState<LogItem[]>([]);
@@ -97,73 +161,25 @@ export default function LogAktivitas() {
     };
   }, []);
 
-  const formatTanggal = (value: string | null) => {
-    if (!value) return "-";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "-";
-    return d.toLocaleString("id-ID", {
-      timeZone: "Asia/Jakarta",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+  // ==== DERIVED STATE DI-MEMO ====
 
-  const formatTanggalHeader = (value: string) => {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "-";
-    return d.toLocaleDateString("id-ID", {
-      timeZone: "Asia/Jakarta",
-      weekday: "long",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  };
+  const filteredItems = useMemo(
+    () =>
+      filter === "ALL"
+        ? items
+        : items.filter((item) => item.sumber === filter),
+    [items, filter]
+  );
 
-  const groupByTanggal = (data: LogItem[]): GroupedLog[] => {
-    const map = new Map<string, { label: string; items: LogItem[] }>();
+  const grouped = useMemo(
+    () => groupByTanggal(filteredItems),
+    [filteredItems]
+  );
 
-    for (const item of data) {
-      const d = new Date(item.updatedAt);
-      if (Number.isNaN(d.getTime())) continue;
-
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      const key = `${y}-${m}-${day}`;
-
-      const label = formatTanggalHeader(d.toISOString());
-
-      const existing = map.get(key);
-      if (existing) {
-        existing.items.push(item);
-      } else {
-        map.set(key, { label, items: [item] });
-      }
-    }
-
-    return Array.from(map.entries())
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // tanggal terbaru di atas
-      .map(([dateKey, { label, items }]) => ({
-        dateKey,
-        label,
-        items: items.sort(
-          (a, b) =>
-            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-        ),
-      }));
-  };
-
-  const filteredItems =
-    filter === "ALL"
-      ? items
-      : items.filter((item) => item.sumber === filter);
-
-  const grouped = groupByTanggal(filteredItems);
-  const lastUpdated = items[0]?.updatedAt ?? null;
+  const lastUpdated = useMemo(
+    () => (items.length > 0 ? items[0].updatedAt : null),
+    [items]
+  );
 
   return (
     <section className="space-y-3">

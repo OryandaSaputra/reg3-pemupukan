@@ -1,7 +1,7 @@
 // prisma/schema.prisma
 datasource db {
-  provider  = "postgresql"
-  url  	    = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -33,7 +33,15 @@ model RencanaPemupukan {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
+  // INDEXES
+  // Untuk filter per kebun + tanggal (sudah ada, dipertahankan)
   @@index([kebun, tanggal], name: "idx_rencana_kebun_tanggal")
+
+  // Untuk query yang sering pakai kodeKebun + afd + blok (mis. per afdeling / blok)
+  @@index([kodeKebun, afd, blok], name: "idx_rencana_kodeKebun_afd_blok")
+
+  // Untuk query range by tanggal (tanpa kebun), misalnya per bulan/tahun semua kebun
+  @@index([tanggal], name: "idx_rencana_tanggal")
 }
 
 model RealisasiPemupukan {
@@ -55,5 +63,8 @@ model RealisasiPemupukan {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
+  // INDEXES
   @@index([kebun, tanggal], name: "idx_realisasi_kebun_tanggal")
+  @@index([kodeKebun, afd, blok], name: "idx_realisasi_kodeKebun_afd_blok")
+  @@index([tanggal], name: "idx_realisasi_tanggal")
 }
