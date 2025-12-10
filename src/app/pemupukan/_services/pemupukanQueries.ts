@@ -204,6 +204,6 @@ export const buildTmRowsFromDb = unstable_cache(
   ["pemupukan:helpers:buildTmRowsFromDb"],
   {
     // contoh: cache 5 menit; bisa diubah sesuai kebutuhan
-    revalidate: 300,
+    revalidate: 30,
   }
 );

@@ -1,7 +1,7 @@
 // src/app/pemupukan/_components/dashboard/visualisasi/Visualisasi.tsx
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import {
   ResponsiveContainer,
   PieChart,
@@ -320,9 +320,9 @@ const fmtPct = (n?: number | null) =>
   n == null
     ? "-"
     : n.toLocaleString("id-ID", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
 
 /* ======================================================================= */
 /* ====================== EXPORT PDF PEMUPUKAN =========================== */
@@ -332,9 +332,9 @@ type PdfCell =
   | string
   | number
   | {
-    content: string | number;
-    colSpan?: number;
-  };
+      content: string | number;
+      colSpan?: number;
+    };
 
 /** Helper: export tabel pemupukan ke PDF dari data
  *  ⚡ Lazy-load jspdf & jspdf-autotable supaya tidak masuk initial bundle.
@@ -392,9 +392,9 @@ async function exportPemupukanTablePdf(
     n == null
       ? "-"
       : n.toLocaleString("id-ID", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
 
   const labelRealisasi = meta.hasUserFilter
     ? `Realisasi Periode\n${meta.startLong} – ${meta.endLong}`
@@ -901,6 +901,28 @@ export default function Visualisasi({
   hasUserFilter?: boolean;
 }) {
   /* =================================================================== */
+  /* =================== WAKTU TERAKHIR DIPERBARUI ===================== */
+  /* =================================================================== */
+
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+
+  // Anggap data "diperbarui" setiap kali props data utama berubah
+  useEffect(() => {
+    setLastUpdatedAt(new Date());
+  }, [aggPupuk, tmRows, tbmRows, tmTbmRows, realWindow?.start, realWindow?.end, realCutoffDate]);
+
+  const lastUpdatedLabel = useMemo(() => {
+    if (!lastUpdatedAt) return "-";
+    return lastUpdatedAt.toLocaleTimeString("id-ID", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZone: "Asia/Jakarta",
+    });
+  }, [lastUpdatedAt]);
+
+  /* =================================================================== */
   /* ======================= TANGGAL HARI INI ========================== */
   /* =================================================================== */
 
@@ -968,6 +990,17 @@ export default function Visualisasi({
   return (
     <section className="space-y-4">
       <SectionHeader title="Visualisasi" desc="Grafik utama" />
+
+      {/* Info waktu terakhir update + penjelasan TTL cache */}
+      <div className="text-[11px] text-emerald-100/80">
+        <div>
+          Terakhir diperbarui:{" "}
+          <span className="font-semibold">{lastUpdatedLabel}</span>
+        </div>
+        <div className="text-[10px] text-emerald-100/60">
+          Data akan mengalami pembaruan ulang 60 detik setelah update terakhir.
+        </div>
+      </div>
 
       {/* ===================== PIE RENCANA vs REALISASI ===================== */}
       <div className="grid grid-cols-12 gap-3">

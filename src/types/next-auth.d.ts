@@ -23,3 +23,7 @@ declare module "next-auth/jwt" {
     role?: "admin" | "user";
   }
 }
+
+// Tambahan kecil supaya file ini dianggap "module"
+// dan augmentasi tidak bentrok dengan global types lain
+export {};

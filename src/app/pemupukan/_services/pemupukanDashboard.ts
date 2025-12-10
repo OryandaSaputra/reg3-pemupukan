@@ -717,7 +717,7 @@ const getRealisasiRangeCached = unstable_cache(
   },
   ["pemupukan:getRealisasiRange"],
   {
-    revalidate: 300,
+    revalidate: 30,
   }
 );
 
@@ -739,7 +739,7 @@ const buildTmRowsFromDbCached = unstable_cache(
   },
   ["pemupukan:buildTmRowsFromDb"],
   {
-    revalidate: 300,
+    revalidate: 30,
   }
 );
 
@@ -753,7 +753,7 @@ const getTotalsCached = unstable_cache(
   },
   ["pemupukan:getTotals"],
   {
-    revalidate: 300,
+    revalidate: 30,
   }
 );
 
@@ -767,7 +767,7 @@ const getAggPupukCached = unstable_cache(
   },
   ["pemupukan:getAggPupuk"],
   {
-    revalidate: 300,
+    revalidate: 30,
   }
 );
 

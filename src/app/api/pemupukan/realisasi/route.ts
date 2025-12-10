@@ -262,7 +262,7 @@ const getRealisasiDataCached = unstable_cache(
   },
   ["pemupukan:realisasi:get"],
   {
-    revalidate: 300, // cache 5 menit
+    revalidate: 30, // cache 30 detik
     tags: ["pemupukan:realisasi"],
   }
 );
@@ -318,7 +318,7 @@ export async function GET(req: Request) {
     return NextResponse.json(result, {
       headers: {
         "Cache-Control":
-          "public, max-age=60, s-maxage=300, stale-while-revalidate=600",
+          "public, max-age=0, s-maxage=30",
       },
     });
   } catch (err: unknown) {

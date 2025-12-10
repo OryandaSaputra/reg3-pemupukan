@@ -203,7 +203,7 @@ const getMetaCached = unstable_cache(
   },
   ["pemupukan:meta:get"],
   {
-    revalidate: 300, // cache 5 menit (bisa diubah sesuai kebutuhan)
+    revalidate: 30, // cache 30 detik
     tags: ["pemupukan:meta"],
   }
 );
@@ -225,7 +225,7 @@ export async function GET(req: NextRequest) {
       headers: {
         // HTTP caching tambahan (CDN / browser)
         "Cache-Control":
-          "public, max-age=300, s-maxage=300, stale-while-revalidate=600",
+          "public, max-age=0, s-maxage=30",
       },
     });
   } catch (err) {

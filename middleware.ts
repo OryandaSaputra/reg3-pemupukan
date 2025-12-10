@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
+const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
+
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
@@ -11,7 +13,12 @@ export async function middleware(req: NextRequest) {
   const isPemupukanRoute = pathname.startsWith("/pemupukan");
 
   // Ambil token session dari NextAuth (JWT di cookie)
-  const token = await getToken({ req });
+  // Menyertakan secret supaya konsisten dengan authOptions
+  const token = await getToken({
+    req,
+    ...(NEXTAUTH_SECRET && { secret: NEXTAUTH_SECRET }),
+  });
+
   const isAuthenticated = !!token;
 
   // 1) Akses "/" → arahkan ke login atau dashboard
@@ -23,6 +30,7 @@ export async function middleware(req: NextRequest) {
   // 2) Belum login tapi akses /pemupukan/* → paksa ke /login
   if (isPemupukanRoute && !isAuthenticated) {
     const loginUrl = new URL("/login", req.url);
+    // callbackUrl supaya habis login bisa balik ke halaman yang diminta
     loginUrl.searchParams.set("callbackUrl", pathname + search);
     return NextResponse.redirect(loginUrl);
   }
@@ -37,5 +45,6 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
+  // Middleware hanya jalan di rute berikut, jadi lebih hemat
   matcher: ["/", "/login", "/pemupukan/:path*"],
 };

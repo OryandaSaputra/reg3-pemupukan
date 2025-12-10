@@ -116,7 +116,7 @@ const getLogAktivitasCached = unstable_cache(
   },
   ["pemupukan:log-aktivitas:get"],
   {
-    revalidate: 60, // cache 1 menit (log sifatnya lebih dinamis)
+    revalidate: 30, // cache 30 detik
     tags: ["pemupukan:log-aktivitas"],
   }
 );
@@ -141,7 +141,7 @@ export async function GET(req: NextRequest) {
       headers: {
         // Optional HTTP-level cache; tidak mengubah isi response
         "Cache-Control":
-          "public, max-age=60, s-maxage=60, stale-while-revalidate=120",
+          "public, max-age=0, s-maxage=30",
       },
     });
   } catch (err) {
