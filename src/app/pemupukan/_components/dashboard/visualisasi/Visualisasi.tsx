@@ -13,7 +13,7 @@ import type { RowInput } from "jspdf-autotable";
 
 import ChartCard from "../../shared/ChartCard";
 import SectionHeader from "../../shared/SectionHeader";
-import { KEBUN_LABEL } from "../../../_config/constants";
+import { KEBUN_LABEL, KEBUN_ORDER } from "../../../_config/constants";
 
 /* ======================================================================= */
 /* ============================== TYPE ================================== */
@@ -75,33 +75,6 @@ export type TmRow = {
   jumlah_realSd0710: number;
   jumlah_pct: number;
 };
-
-/* ======================================================================= */
-/* ======================= KONSTAN URUTAN KEBUN ========================= */
-/* ======================================================================= */
-
-const KEBUN_ORDER = [
-  "SGH",
-  "SGO",
-  "SPA",
-  "TME",
-  "TPU",
-  "LDA",
-  "SBT",
-  "AMO-1",
-  "AMO-2",
-  "TAN",
-  "TER",
-  "SKE",
-  "SLI",
-  "TAM",
-  "SBL",
-  "SRO",
-  "SIN",
-  "SSI",
-  "STA",
-  "SBE",
-];
 
 // Warna khusus untuk pie Rencana vs Realisasi (disesuaikan palet utama)
 const PIE_PLAN_COLOR = "#2E7D32"; // hijau daun (Rencana)

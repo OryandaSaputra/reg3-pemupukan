@@ -24,8 +24,7 @@ import {
 } from "recharts";
 
 import ChartCard from "../../shared/ChartCard";
-import { KEBUN_LABEL } from "../../../_config/constants";
-import { Button } from "@/components/ui/button";
+import { KEBUN_LABEL, KEBUN_ORDER } from "../../../_config/constants"; import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -226,7 +225,7 @@ export default function CurahHujanSection() {
 
   const kebunOptions = useMemo(
     () =>
-      Object.keys(KEBUN_LABEL).map((code) => ({
+      KEBUN_ORDER.map((code) => ({
         code,
         name: KEBUN_LABEL[code] ?? code,
       })),
@@ -361,9 +360,8 @@ export default function CurahHujanSection() {
       });
 
       const pageTitle = "Curah Hujan per Kebun";
-      const pageSubtitle = `Harian ${dailyDate || "-"} • Total ${
-        rangeStart || "-"
-      } s/d ${rangeEnd || "-"}`;
+      const pageSubtitle = `Harian ${dailyDate || "-"} • Total ${rangeStart || "-"
+        } s/d ${rangeEnd || "-"}`;
       const fileName = `curah-hujan-${dailyDate || "periode"}.pdf`;
 
       const maxBytes = 1024 * 1024; // 1 MB
@@ -540,8 +538,8 @@ export default function CurahHujanSection() {
                 Kolom <b>Datetime</b> dan/atau <b>Rainfall</b> tidak ditemukan.<br/>
                 Contoh baris awal yang terbaca:
                 <code>${(firstRow as (string | number)[])
-                  .map((c) => String(c))
-                  .join(", ")}</code><br/>
+                .map((c) => String(c))
+                .join(", ")}</code><br/>
                 Pastikan ada satu baris header yang berisi kolom <b>Datetime</b> dan <b>Rainfall</b>.
               </div>
             `,
@@ -677,8 +675,8 @@ export default function CurahHujanSection() {
               dari <b>${totalRawRows}</b> baris data untuk kebun
               <b>${KEBUN_LABEL[selectedKebun] ?? selectedKebun}</b>.<br/>
               Data dikirim dalam <b>${Math.ceil(
-                totalRawRows / CHUNK_SIZE
-              )}</b> batch (maks ${CHUNK_SIZE} baris per batch).
+            totalRawRows / CHUNK_SIZE
+          )}</b> batch (maks ${CHUNK_SIZE} baris per batch).
             </div>
           `,
           confirmButtonText: "OK",
@@ -1078,7 +1076,7 @@ export default function CurahHujanSection() {
     [dailyDate, rangeStart, rangeEnd, fetchChartData]
   );
 
- const hasAnyKebun = kebunOptions.length > 0;
+  const hasAnyKebun = kebunOptions.length > 0;
 
   return (
     <>
@@ -1087,7 +1085,7 @@ export default function CurahHujanSection() {
         <ChartCard
           title=""
           subtitle="Curah hujan"
-          // ❌ headerRight dihapus supaya tidak sejajar dengan button Filter utama
+        // ❌ headerRight dihapus supaya tidak sejajar dengan button Filter utama
         >
           {/* ✅ CONTROL BAR DIPINDAH KE DALAM CARD, DI ATAS CHART */}
           <div
@@ -1312,11 +1310,10 @@ export default function CurahHujanSection() {
                   {chartData.map((row, idx) => (
                     <tr
                       key={row.kebunCode}
-                      className={`border-t border-emerald-500/10 ${
-                        idx % 2 === 0
+                      className={`border-t border-emerald-500/10 ${idx % 2 === 0
                           ? "bg-slate-950/20"
                           : "bg-slate-900/10"
-                      }`}
+                        }`}
                     >
                       <td className="px-3 py-1.5 font-mono text-[11px] text-slate-100">
                         {row.kebunCode}

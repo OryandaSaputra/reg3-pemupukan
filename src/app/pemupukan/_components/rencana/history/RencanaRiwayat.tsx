@@ -418,7 +418,7 @@ export default function RencanaRiwayat() {
   const paddingBottom =
     virtualItems.length > 0
       ? rowVirtualizer.getTotalSize() -
-        (virtualItems[virtualItems.length - 1].end || 0)
+      (virtualItems[virtualItems.length - 1].end || 0)
       : 0;
 
   // === ACTION: HAPUS SATU DATA ===
@@ -787,7 +787,9 @@ export default function RencanaRiwayat() {
 
       const jsPDFmod = await import("jspdf");
       const autoTable = (await import("jspdf-autotable")).default;
-      const doc = new jsPDFmod.jsPDF({ orientation: "landscape" });
+
+      // ✅ pakai overload positional + compressPdf = true
+      const doc = new jsPDFmod.jsPDF("landscape", "pt", "a4", true);
 
       const grouped: Record<string, HistoryRow[]> = {};
       allRows.forEach((r) => {
@@ -809,14 +811,16 @@ export default function RencanaRiwayat() {
         setExportProcessedGroups(i);
         await new Promise((resolve) => setTimeout(resolve, 0));
 
-        if (i > 0) doc.addPage("landscape");
+        if (i > 0) {
+          doc.addPage("landscape");
+        }
 
         const kebunLabel = KEBUN_LABEL[kebunCode] ?? kebunCode;
         doc.setFontSize(10);
         doc.text(
           `Rencana Pemupukan - Kebun ${kebunLabel} (${kebunCode})`,
           14,
-          12
+          18
         );
 
         const body = kebunRows.map((r) => [
@@ -836,16 +840,35 @@ export default function RencanaRiwayat() {
         ]);
 
         autoTable(doc, {
-          startY: 16,
+          startY: 24,
           head: [TABLE_HEADERS as unknown as string[]],
           body,
-          styles: { fontSize: 6 },
+          styles: { fontSize: 6 }, // kecil = lebih hemat ukuran
           headStyles: { fillColor: [226, 232, 240] },
           margin: { left: 10, right: 10 },
         });
       }
 
       setExportProcessedGroups(kebunEntries.length);
+
+      // ✅ CEK BATAS 1 MB
+      const MAX_BYTES = 1024 * 1024; // 1 MB
+      const blob = doc.output("blob") as Blob;
+
+      if (blob.size > MAX_BYTES) {
+        const sizeKb = (blob.size / 1024).toFixed(0);
+        await Swal.fire({
+          title: "File terlalu besar",
+          html: `
+          Ukuran file PDF hasil export adalah <b>${sizeKb} KB</b>, melebihi batas 1 MB.<br/>
+          Gunakan filter (tahun, kebun, tanggal, kategori, dll) terlebih dahulu<br/>
+          atau gunakan export Excel bila butuh seluruh data lengkap.
+        `,
+          icon: "warning",
+          confirmButtonText: "OK",
+        });
+        return; // ❌ jangan simpan file jika > 1 MB
+      }
 
       doc.save("Rencana_Pemupukan_Semua_Kebun.pdf");
     } catch (err) {
@@ -896,14 +919,16 @@ export default function RencanaRiwayat() {
 
       const jsPDFmod = await import("jspdf");
       const autoTable = (await import("jspdf-autotable")).default;
-      const doc = new jsPDFmod.jsPDF({ orientation: "landscape" });
+
+      // ✅ posisi + compressPdf = true
+      const doc = new jsPDFmod.jsPDF("landscape", "pt", "a4", true);
 
       const kebunLabel = KEBUN_LABEL[selectedKebun] ?? selectedKebun;
       doc.setFontSize(10);
       doc.text(
         `Rencana Pemupukan - Kebun ${kebunLabel} (${selectedKebun})`,
         14,
-        12
+        18
       );
 
       const body = kebunRows.map((r) => [
@@ -923,7 +948,7 @@ export default function RencanaRiwayat() {
       ]);
 
       autoTable(doc, {
-        startY: 16,
+        startY: 24,
         head: [TABLE_HEADERS as unknown as string[]],
         body,
         styles: { fontSize: 6 },
@@ -932,6 +957,25 @@ export default function RencanaRiwayat() {
       });
 
       setExportProcessedGroups(1);
+
+      // ✅ CEK BATAS 1 MB
+      const MAX_BYTES = 1024 * 1024;
+      const blob = doc.output("blob") as Blob;
+
+      if (blob.size > MAX_BYTES) {
+        const sizeKb = (blob.size / 1024).toFixed(0);
+        await Swal.fire({
+          title: "File terlalu besar",
+          html: `
+          Ukuran file PDF hasil export adalah <b>${sizeKb} KB</b>, melebihi batas 1 MB.<br/>
+          Coba perkecil rentang data (filter tahun, tanggal, kategori, dsb)<br/>
+          sebelum melakukan export PDF per kebun.
+        `,
+          icon: "warning",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
 
       const fileName = `Rencana_Pemupukan_${selectedKebun}.pdf`;
       doc.save(fileName);
@@ -951,9 +995,9 @@ export default function RencanaRiwayat() {
   const progressPercent =
     exportTotalGroups > 0
       ? Math.min(
-          100,
-          (exportProcessedGroups / exportTotalGroups) * 100
-        )
+        100,
+        (exportProcessedGroups / exportTotalGroups) * 100
+      )
       : 0;
 
   const currentKebunLabel =

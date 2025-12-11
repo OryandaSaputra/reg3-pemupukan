@@ -422,7 +422,7 @@ export default function RealisasiRiwayat() {
   const paddingBottom =
     virtualItems.length > 0
       ? rowVirtualizer.getTotalSize() -
-        (virtualItems[virtualItems.length - 1].end || 0)
+      (virtualItems[virtualItems.length - 1].end || 0)
       : 0;
 
   const handleDelete = async (row: HistoryRow) => {
@@ -788,7 +788,9 @@ export default function RealisasiRiwayat() {
 
       const jsPDFmod = await import("jspdf");
       const autoTable = (await import("jspdf-autotable")).default;
-      const doc = new jsPDFmod.jsPDF({ orientation: "landscape" });
+
+      // ❗ PAKAI OVERLOAD POSISIONAL (orientation, unit, format, compressPdf)
+      const doc = new jsPDFmod.jsPDF("landscape", "pt", "a4", true);
 
       const grouped: Record<string, HistoryRow[]> = {};
       allRows.forEach((r) => {
@@ -819,7 +821,7 @@ export default function RealisasiRiwayat() {
         doc.text(
           `Realisasi Pemupukan - Kebun ${kebunLabel} (${kebunCode})`,
           14,
-          12
+          18
         );
 
         const body = kebunRows.map((r) => [
@@ -839,16 +841,35 @@ export default function RealisasiRiwayat() {
         ]);
 
         autoTable(doc, {
-          startY: 16,
+          startY: 24,
           head: [TABLE_HEADERS as unknown as string[]],
           body,
-          styles: { fontSize: 6 },
+          styles: { fontSize: 6 }, // kecil → lebih irit ukuran
           headStyles: { fillColor: [226, 232, 240] },
           margin: { left: 10, right: 10 },
         });
       }
 
       setExportProcessedGroups(kebunEntries.length);
+
+      // ✅ BATAS MAKS 1 MB
+      const MAX_BYTES = 1024 * 1024; // 1 MB
+      const blob = doc.output("blob") as Blob;
+
+      if (blob.size > MAX_BYTES) {
+        const sizeKb = (blob.size / 1024).toFixed(0);
+        await Swal.fire({
+          title: "File terlalu besar",
+          html: `
+          Ukuran file PDF hasil export adalah <b>${sizeKb} KB</b>, melebihi batas 1 MB.<br/>
+          Gunakan filter (tahun, kebun, tanggal, kategori, dll) terlebih dahulu<br/>
+          atau gunakan export Excel bila butuh seluruh data lengkap.
+        `,
+          icon: "warning",
+          confirmButtonText: "OK",
+        });
+        return; // ❌ jangan simpan file jika > 1 MB
+      }
 
       doc.save("Realisasi_Pemupukan_Semua_Kebun.pdf");
     } catch (err) {
@@ -899,14 +920,16 @@ export default function RealisasiRiwayat() {
 
       const jsPDFmod = await import("jspdf");
       const autoTable = (await import("jspdf-autotable")).default;
-      const doc = new jsPDFmod.jsPDF({ orientation: "landscape" });
+
+      // ❗ Sama: pakai overload positional + compressPdf = true
+      const doc = new jsPDFmod.jsPDF("landscape", "pt", "a4", true);
 
       const kebunLabel = KEBUN_LABEL[selectedKebun] ?? selectedKebun;
       doc.setFontSize(10);
       doc.text(
         `Realisasi Pemupukan - Kebun ${kebunLabel} (${selectedKebun})`,
         14,
-        12
+        18
       );
 
       const body = kebunRows.map((r) => [
@@ -926,7 +949,7 @@ export default function RealisasiRiwayat() {
       ]);
 
       autoTable(doc, {
-        startY: 16,
+        startY: 24,
         head: [TABLE_HEADERS as unknown as string[]],
         body,
         styles: { fontSize: 6 },
@@ -935,6 +958,25 @@ export default function RealisasiRiwayat() {
       });
 
       setExportProcessedGroups(1);
+
+      // ✅ BATAS MAKS 1 MB
+      const MAX_BYTES = 1024 * 1024;
+      const blob = doc.output("blob") as Blob;
+
+      if (blob.size > MAX_BYTES) {
+        const sizeKb = (blob.size / 1024).toFixed(0);
+        await Swal.fire({
+          title: "File terlalu besar",
+          html: `
+          Ukuran file PDF hasil export adalah <b>${sizeKb} KB</b>, melebihi batas 1 MB.<br/>
+          Coba perkecil rentang data (filter tahun, tanggal, kategori, dsb)<br/>
+          sebelum melakukan export PDF per kebun.
+        `,
+          icon: "warning",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
 
       const fileName = `Realisasi_Pemupukan_${selectedKebun}.pdf`;
       doc.save(fileName);

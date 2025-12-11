@@ -23,6 +23,33 @@ export const KEBUN_LABEL: Record<string, string> = {
   STA: "Sei Tapung",
 };
 
+/* ======================================================================= */
+/* ======================= KONSTAN URUTAN KEBUN ========================= */
+/* ======================================================================= */
+
+export const KEBUN_ORDER = [
+  "SGH",
+  "SGO",
+  "SPA",
+  "TME",
+  "TPU",
+  "LDA",
+  "SBT",
+  "AMO-1",
+  "AMO-2",
+  "TAN",
+  "TER",
+  "SKE",
+  "SLI",
+  "TAM",
+  "SBL",
+  "SRO",
+  "SIN",
+  "SSI",
+  "STA",
+  "SBE",
+];
+
 export const ORDER_DTM = ["TME", "TPU", "SPA", "SGH", "SGO", "LDA", "SBT", "AMO-1", "AMO-2"];
 export const ORDER_DBR = ["SKE", "TER", "TAN", "SLI", "TAM", "SBL", "SBE", "SRO", "SIN", "SSI", "STA"];
 

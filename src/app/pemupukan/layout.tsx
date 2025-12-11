@@ -112,7 +112,31 @@ function Frame({ children }: { children: React.ReactNode }) {
                   <span className="text-emerald-200">Divisi Tanaman</span>
                 </h1>
               </div>
-              <div className="flex items-center gap-2">
+
+              {/* Kanan: label auto-refresh + tombol Filter */}
+              <div className="flex items-center gap-3">
+                {/* 🔔 Label info auto-refresh 1 menit */}
+                <Badge
+                  variant="outline"
+                  className="
+                    inline-flex items-center gap-2
+                    rounded-full border-emerald-300/80 bg-emerald-500/10
+                    px-3 py-1 text-[11px] font-medium text-emerald-50
+                    shadow-[0_0_12px_rgba(16,185,129,0.65)]
+                    animate-pulse
+                  "
+                >
+                  <span
+                    className="
+                      h-1.5 w-1.5 rounded-full bg-emerald-300
+                      shadow-[0_0_8px_rgba(110,231,183,0.9)]
+                    "
+                  />
+                  <span className="whitespace-normal sm:whitespace-nowrap">
+                    Data akan diperbarui maksimal 1 menit setelah data baru ditambah 
+                  </span>
+                </Badge>
+
                 <Button
                   variant="outline"
                   className="gap-2 h-8 px-3 rounded-full border-[--glass-border] bg-white/5 text-emerald-50 hover:bg-white/10 hover:text-emerald-50/90 backdrop-blur-md transition-colors"

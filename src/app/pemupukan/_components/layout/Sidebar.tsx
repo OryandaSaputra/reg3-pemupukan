@@ -183,10 +183,12 @@ function Sidebar({
             <button
               type="button"
               onClick={() => setFilterOpen(true)}
-              className="mt-2 w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-[--glass-border] bg-white/5 text-emerald-50/95 hover:bg-white/10 transition-colors"
+              className="mt-2 w-full flex items-center  gap-2 px-3 py-2 rounded-2xl border border-transparent text-emerald-50/90 hover:border-white/20 hover:bg-white/5 transition-colors"
             >
-              <FilterIcon className="h-4 w-4" /> Buka Filter
+              <FilterIcon className="h-4 w-4 text-emerald-100/80" />
+              <span>Buka Filter</span>
             </button>
+
           </nav>
 
           {/* LOGOUT – di bawah sidebar */}
