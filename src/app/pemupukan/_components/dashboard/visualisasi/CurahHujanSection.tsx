@@ -196,11 +196,9 @@ const glassSwal = Swal.mixin({
     denyButton:
       "inline-flex items-center justify-center rounded-lg bg-red-500/90 hover:bg-red-400 text-[11px] font-semibold px-3 py-1.5 text-slate-950 shadow-md",
     input:
-      // ⬇⬇ BG dibuat solid gelap + teks putih
       "rounded-lg border border-emerald-400/60 bg-slate-900 text-xs text-slate-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400/80",
   },
 });
-
 
 // ========================================================================
 
@@ -224,6 +222,7 @@ export default function CurahHujanSection() {
   const [importing, setImporting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const chartRef = useRef<HTMLDivElement | null>(null);
 
   const kebunOptions = useMemo(
     () =>
@@ -331,6 +330,106 @@ export default function CurahHujanSection() {
 
     fileInputRef.current?.click();
   }, [selectedKebun]);
+
+  /**
+   * Export PDF (maks ±1 MB, judul rata tengah)
+   */
+  const handleExportPdf = useCallback(async () => {
+    if (!chartRef.current) {
+      await glassSwal.fire({
+        icon: "info",
+        title: "Grafik belum siap",
+        html: `
+          <div class="text-xs text-slate-200">
+            Grafik belum dapat diexport. Pastikan data sudah tampil terlebih dahulu.
+          </div>
+        `,
+      });
+      return;
+    }
+
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+
+      // Render area chart ke canvas
+      const canvas = await html2canvas(chartRef.current, {
+        scale: 2,
+        backgroundColor: "#020617", // bg-slate-950
+      });
+
+      const pageTitle = "Curah Hujan per Kebun";
+      const pageSubtitle = `Harian ${dailyDate || "-"} • Total ${
+        rangeStart || "-"
+      } s/d ${rangeEnd || "-"}`;
+      const fileName = `curah-hujan-${dailyDate || "periode"}.pdf`;
+
+      const maxBytes = 1024 * 1024; // 1 MB
+      const qualitySteps = [0.9, 0.7, 0.5, 0.35];
+
+      for (let i = 0; i < qualitySteps.length; i += 1) {
+        const q = qualitySteps[i];
+
+        // JPEG jauh lebih kecil dari PNG
+        const imgData = canvas.toDataURL("image/jpeg", q);
+
+        const pdf = new jsPDF("landscape", "pt", "a4");
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+
+        const marginSide = 40;
+        const chartTopY = 70;
+        const chartBottomMargin = 40;
+        const availableHeight = pageHeight - chartTopY - chartBottomMargin;
+
+        let imgWidth = pageWidth - marginSide * 2;
+        let imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        if (imgHeight > availableHeight) {
+          const ratio = availableHeight / imgHeight;
+          imgHeight = availableHeight;
+          imgWidth *= ratio;
+        }
+
+        const imgX = (pageWidth - imgWidth) / 2; // center
+        const imgY = chartTopY;
+
+        // Judul & subjudul rata tengah
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(14);
+        pdf.text(pageTitle, pageWidth / 2, 28, { align: "center" });
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(11);
+        pdf.text(pageSubtitle, pageWidth / 2, 44, { align: "center" });
+
+        // Gambar chart
+        pdf.addImage(imgData, "JPEG", imgX, imgY, imgWidth, imgHeight, "", "FAST");
+
+        const blob = pdf.output("blob") as Blob;
+        const sizeOk = blob.size <= maxBytes || i === qualitySteps.length - 1;
+
+        if (sizeOk) {
+          pdf.save(fileName);
+          break;
+        }
+      }
+    } catch (err) {
+      console.error("Export PDF curah hujan error:", err);
+      await glassSwal.fire({
+        icon: "error",
+        title: "Gagal export PDF",
+        html: `
+          <div class="text-xs text-slate-200">
+            Terjadi kesalahan saat membuat file PDF.<br/>
+            Pastikan koneksi stabil lalu coba lagi.
+          </div>
+        `,
+      });
+    }
+  }, [dailyDate, rangeStart, rangeEnd]);
 
   /**
    * Import Excel
@@ -441,8 +540,8 @@ export default function CurahHujanSection() {
                 Kolom <b>Datetime</b> dan/atau <b>Rainfall</b> tidak ditemukan.<br/>
                 Contoh baris awal yang terbaca:
                 <code>${(firstRow as (string | number)[])
-                .map((c) => String(c))
-                .join(", ")}</code><br/>
+                  .map((c) => String(c))
+                  .join(", ")}</code><br/>
                 Pastikan ada satu baris header yang berisi kolom <b>Datetime</b> dan <b>Rainfall</b>.
               </div>
             `,
@@ -578,8 +677,8 @@ export default function CurahHujanSection() {
               dari <b>${totalRawRows}</b> baris data untuk kebun
               <b>${KEBUN_LABEL[selectedKebun] ?? selectedKebun}</b>.<br/>
               Data dikirim dalam <b>${Math.ceil(
-            totalRawRows / CHUNK_SIZE
-          )}</b> batch (maks ${CHUNK_SIZE} baris per batch).
+                totalRawRows / CHUNK_SIZE
+              )}</b> batch (maks ${CHUNK_SIZE} baris per batch).
             </div>
           `,
           confirmButtonText: "OK",
@@ -987,11 +1086,16 @@ export default function CurahHujanSection() {
       <section className="mt-3">
         <ChartCard
           title=""
-          subtitle={`Curah hujan`}
+          subtitle="Curah hujan"
           headerRight={
-            <div className="flex flex-col items-stretch gap-2 text-xs md:flex-row md:flex-wrap md:items-center md:justify-end">
+            <div
+              className="
+                flex w-full flex-wrap items-center justify-end gap-2
+                overflow-x-auto pb-1 pt-1 text-xs
+              "
+            >
               {/* Tanggal harian */}
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <span className="whitespace-nowrap text-[11px] text-slate-300">
                   Tanggal harian:
                 </span>
@@ -1004,7 +1108,7 @@ export default function CurahHujanSection() {
               </div>
 
               {/* Range untuk TOTAL */}
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <span className="whitespace-nowrap text-[11px] text-slate-300">
                   Periode total:
                 </span>
@@ -1026,7 +1130,7 @@ export default function CurahHujanSection() {
               </div>
 
               {/* Pilih kebun untuk import */}
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <span className="whitespace-nowrap text-[11px] text-slate-300">
                   Kebun import:
                 </span>
@@ -1050,7 +1154,7 @@ export default function CurahHujanSection() {
                 </Select>
               </div>
 
-              {/* Input file (hidden) + tombol Import */}
+              {/* Input file (hidden) + tombol Import & Export */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1059,20 +1163,33 @@ export default function CurahHujanSection() {
                 onChange={handleImportExcel}
               />
 
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleClickImportButton}
-                disabled={importing}
-                className="mt-1 md:mt-0"
-              >
-                {importing ? "Mengimport..." : "Import Excel"}
-              </Button>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleClickImportButton}
+                  disabled={importing}
+                  className="h-8 px-3 text-[11px]"
+                >
+                  {importing ? "Mengimport..." : "Import"}
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleExportPdf}
+                  disabled={loadingChart || !chartData.length}
+                  className="h-8 px-3 text-[11px]"
+                >
+                  Export PDF
+                </Button>
+              </div>
             </div>
           }
         >
-          <div className="mt-4 h-[320px] w-full">
+          <div ref={chartRef} className="mt-4 h-[320px] w-full">
             {loadingChart ? (
               <div className="flex h-full items-center justify-center text-sm text-slate-300">
                 Memuat data curah hujan...
@@ -1197,10 +1314,11 @@ export default function CurahHujanSection() {
                   {chartData.map((row, idx) => (
                     <tr
                       key={row.kebunCode}
-                      className={`border-t border-emerald-500/10 ${idx % 2 === 0
-                        ? "bg-slate-950/20"
-                        : "bg-slate-900/10"
-                        }`}
+                      className={`border-t border-emerald-500/10 ${
+                        idx % 2 === 0
+                          ? "bg-slate-950/20"
+                          : "bg-slate-900/10"
+                      }`}
                     >
                       <td className="px-3 py-1.5 font-mono text-[11px] text-slate-100">
                         {row.kebunCode}
