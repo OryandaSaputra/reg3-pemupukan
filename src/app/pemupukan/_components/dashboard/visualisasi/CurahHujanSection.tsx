@@ -1078,7 +1078,7 @@ export default function CurahHujanSection() {
     [dailyDate, rangeStart, rangeEnd, fetchChartData]
   );
 
-  const hasAnyKebun = kebunOptions.length > 0;
+ const hasAnyKebun = kebunOptions.length > 0;
 
   return (
     <>
@@ -1087,109 +1087,111 @@ export default function CurahHujanSection() {
         <ChartCard
           title=""
           subtitle="Curah hujan"
-          headerRight={
-            <div
-              className="
-                flex w-full flex-wrap items-center justify-end gap-2
-                overflow-x-auto pb-1 pt-1 text-xs
-              "
-            >
-              {/* Tanggal harian */}
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="whitespace-nowrap text-[11px] text-slate-300">
-                  Tanggal harian:
-                </span>
+          // ❌ headerRight dihapus supaya tidak sejajar dengan button Filter utama
+        >
+          {/* ✅ CONTROL BAR DIPINDAH KE DALAM CARD, DI ATAS CHART */}
+          <div
+            className="
+              mb-3
+              flex flex-col gap-2
+              lg:flex-row lg:flex-wrap lg:items-center lg:justify-end
+              text-xs
+            "
+          >
+            {/* Tanggal harian */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="whitespace-nowrap text-[11px] text-slate-300">
+                Tanggal harian:
+              </span>
+              <Input
+                type="date"
+                value={dailyDate}
+                onChange={(e) => setDailyDate(e.target.value)}
+                className="h-8 w-[140px] border-emerald-500/40 bg-slate-950/40 text-xs"
+              />
+            </div>
+
+            {/* Range untuk TOTAL */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="whitespace-nowrap text-[11px] text-slate-300">
+                Periode total:
+              </span>
+              <div className="flex items-center gap-1">
                 <Input
                   type="date"
-                  value={dailyDate}
-                  onChange={(e) => setDailyDate(e.target.value)}
-                  className="h-8 w-[140px] border-emerald-500/40 bg-slate-950/40 text-xs"
+                  value={rangeStart}
+                  onChange={(e) => setRangeStart(e.target.value)}
+                  className="h-8 w-[130px] border-emerald-500/40 bg-slate-950/40 text-xs"
+                />
+                <span className="text-[11px] text-slate-400">s/d</span>
+                <Input
+                  type="date"
+                  value={rangeEnd}
+                  onChange={(e) => setRangeEnd(e.target.value)}
+                  className="h-8 w-[130px] border-emerald-500/40 bg-slate-950/40 text-xs"
                 />
               </div>
-
-              {/* Range untuk TOTAL */}
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="whitespace-nowrap text-[11px] text-slate-300">
-                  Periode total:
-                </span>
-                <div className="flex items-center gap-1">
-                  <Input
-                    type="date"
-                    value={rangeStart}
-                    onChange={(e) => setRangeStart(e.target.value)}
-                    className="h-8 w-[130px] border-emerald-500/40 bg-slate-950/40 text-xs"
-                  />
-                  <span className="text-[11px] text-slate-400">s/d</span>
-                  <Input
-                    type="date"
-                    value={rangeEnd}
-                    onChange={(e) => setRangeEnd(e.target.value)}
-                    className="h-8 w-[130px] border-emerald-500/40 bg-slate-950/40 text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* Pilih kebun untuk import */}
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="whitespace-nowrap text-[11px] text-slate-300">
-                  Kebun import:
-                </span>
-                <Select
-                  value={selectedKebun}
-                  onValueChange={(v) => setSelectedKebun(v)}
-                >
-                  {/* Trigger solid */}
-                  <SelectTrigger className="h-8 w-[170px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
-                    <SelectValue placeholder="Pilih kebun" />
-                  </SelectTrigger>
-
-                  {/* Panel dropdown solid */}
-                  <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
-                    {kebunOptions.map((k) => (
-                      <SelectItem key={k.code} value={k.code}>
-                        {k.code} — {k.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Input file (hidden) + tombol Import & Export */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-                onChange={handleImportExcel}
-              />
-
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={handleClickImportButton}
-                  disabled={importing}
-                  className="h-8 px-3 text-[11px]"
-                >
-                  {importing ? "Mengimport..." : "Import"}
-                </Button>
-
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={handleExportPdf}
-                  disabled={loadingChart || !chartData.length}
-                  className="h-8 px-3 text-[11px]"
-                >
-                  Export PDF
-                </Button>
-              </div>
             </div>
-          }
-        >
-          <div ref={chartRef} className="mt-4 h-[320px] w-full">
+
+            {/* Pilih kebun untuk import */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="whitespace-nowrap text-[11px] text-slate-300">
+                Kebun import:
+              </span>
+              <Select
+                value={selectedKebun}
+                onValueChange={(v) => setSelectedKebun(v)}
+              >
+                <SelectTrigger className="h-8 w-[170px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
+                  <SelectValue placeholder="Pilih kebun" />
+                </SelectTrigger>
+
+                <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
+                  {kebunOptions.map((k) => (
+                    <SelectItem key={k.code} value={k.code}>
+                      {k.code} — {k.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Input file (hidden) + tombol Import & Export */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={handleImportExcel}
+            />
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleClickImportButton}
+                disabled={importing}
+                className="h-8 px-3 text-[11px]"
+              >
+                {importing ? "Mengimport..." : "Import"}
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleExportPdf}
+                disabled={loadingChart || !chartData.length}
+                className="h-8 px-3 text-[11px]"
+              >
+                Export PDF
+              </Button>
+            </div>
+          </div>
+
+          {/* CHART */}
+          <div ref={chartRef} className="h-[320px] w-full">
             {loadingChart ? (
               <div className="flex h-full items-center justify-center text-sm text-slate-300">
                 Memuat data curah hujan...
@@ -1229,11 +1231,8 @@ export default function CurahHujanSection() {
                       <RainTooltip {...props} dailyDate={dailyDate} />
                     )}
                   />
-                  <Legend
-                    wrapperStyle={{ fontSize: 11, color: "#E5E7EB" }}
-                  />
+                  <Legend wrapperStyle={{ fontSize: 11, color: "#E5E7EB" }} />
 
-                  {/* Bar harian (lebih terang) */}
                   <Bar
                     dataKey="dailyMm"
                     name={`Harian (${dailyDate})`}
@@ -1256,7 +1255,6 @@ export default function CurahHujanSection() {
                     })}
                   </Bar>
 
-                  {/* Bar total periode (lebih gelap) */}
                   <Bar
                     dataKey="mtdMm"
                     name={`Total (${rangeStart} s/d ${rangeEnd})`}
