@@ -4,12 +4,12 @@ import { useEffect, useState, memo } from "react";
 import Image from "next/image";
 import {
   Database,
-  TrendingUp,
   X as XIcon,
   Filter as FilterIcon,
   Calendar,
   Factory,
   LogOut,
+  CloudRain,
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { motion } from "framer-motion";
@@ -155,14 +155,20 @@ function MobileSidebar({
                 Tabel Rencana
               </button>
 
-              {/* Komposisi per Jenis */}
+              {/* Section Curah Hujan */}
+              <p className="mt-3 mb-1 px-3 text-[11px] font-semibold tracking-wide text-emerald-200/70 uppercase">
+                Curah Hujan
+              </p>
+
               <button
                 type="button"
-                onClick={() => navigateWithLoading("/pemupukan/komposisi")}
-                className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-white/0 hover:bg-white/10 border border-transparent hover:border-white/20 transition-colors text-left"
+                onClick={() =>
+                  navigateWithLoading("/pemupukan/curah-hujan")
+                }
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/0 hover:bg-white/10 border border-transparent hover:border-white/20 text-left text-[13px]"
               >
-                <TrendingUp className="h-4 w-4 text-emerald-100/80" />
-                Komposisi per Jenis
+                <CloudRain className="h-4 w-4 text-emerald-200/80" />
+                <span>Visualisasi Curah Hujan</span>
               </button>
 
               {/* Buka Filter */}

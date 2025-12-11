@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   LogOut,
+  CloudRain,
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { motion } from "framer-motion";
@@ -166,6 +167,17 @@ function Sidebar({
                 </button>
               </div>
             )}
+
+            {/* Curah Hujan */}
+            <button
+              type="button"
+              onClick={() => navigateWithLoading("/pemupukan/curah-hujan")}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-white/0 hover:bg-white/10 border border-transparent hover:border-white/20 transition-colors text-left"
+            >
+              <CloudRain className="h-4 w-4 text-emerald-100/80" />
+              <span>Curah Hujan</span>
+            </button>
+
 
             {/* Buka Filter */}
             <button

@@ -68,3 +68,26 @@ model RealisasiPemupukan {
   @@index([kodeKebun, afd, blok], name: "idx_realisasi_kodeKebun_afd_blok")
   @@index([tanggal], name: "idx_realisasi_tanggal")
 }
+
+model CurahHujanHarian {
+  /// Kode kebun, misal "TME", "TPU", dll
+  kebunCode String
+
+  /// Tanggal (harian, tanpa jam – disimpan sebagai 00:00)
+  tanggal   DateTime
+
+  /// Nama kebun (cache dari KEBUN_LABEL, biar gampang dipakai di laporan)
+  kebunName String
+
+  /// Total curah hujan harian (mm) untuk kebun + tanggal ini
+  totalMm   Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Composite primary key → bisa pakai upsert([kebunCode, tanggal])
+  @@id([kebunCode, tanggal])
+
+  @@index([tanggal])
+  @@index([kebunCode, tanggal], name: "idx_curah_kebun_tanggal")
+}
