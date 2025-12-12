@@ -111,6 +111,11 @@ function parseDateOnlyFromExcelDatetime(raw: string): Date | null {
  * Convert apapun ke number aman, fallback 0.
  */
 function safeNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "string") {
+    const cleaned = value.trim().replace(",", ".");
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : fallback;
+  }
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 }
@@ -180,22 +185,26 @@ export async function POST(req: Request) {
     >();
 
     for (const row of dataRows) {
-      const dtRaw = (row.Datetime ?? "").toString();
-      if (!dtRaw.trim()) continue;
+      const dtRaw = (row.Datetime ?? "").toString().trim();
+      if (!dtRaw) continue;
 
       const tanggal = parseDateOnlyFromExcelDatetime(dtRaw);
       if (!tanggal) continue;
 
-      const rain = safeNumber(row.Rainfall, 0);
-      if (rain <= 0) continue; // abaikan nol / invalid
+      // Rainfall: boleh 0, yang dibuang cuma invalid / negatif
+      const rain = safeNumber(row.Rainfall, NaN);
+      if (!Number.isFinite(rain) || rain < 0) continue;
 
-      const key = tanggal.toISOString(); // unik per hari
+      const key = tanggal.toISOString();
+
+      // Pastikan tanggal harian “tercatat” walaupun rain=0
       const existing = bucket.get(key);
-      if (existing) {
-        existing.totalMm += rain;
-      } else {
-        bucket.set(key, { tanggal, totalMm: rain });
+      if (!existing) {
+        bucket.set(key, { tanggal, totalMm: 0 });
       }
+
+      // Tambahkan nilai (kalau 0 ya tetap 0)
+      bucket.get(key)!.totalMm += rain;
     }
 
     const aggregated = Array.from(bucket.values());
