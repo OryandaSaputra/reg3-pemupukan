@@ -76,18 +76,23 @@ model CurahHujanHarian {
   /// Tanggal (harian, tanpa jam – disimpan sebagai 00:00)
   tanggal   DateTime
 
+  /// Sumber data curah hujan: "AWS" atau "OMBROMETER"
+  /// Default "AWS" supaya data lama tetap terbaca.
+  sumber    String   @default("AWS")
+
   /// Nama kebun (cache dari KEBUN_LABEL, biar gampang dipakai di laporan)
   kebunName String
 
-  /// Total curah hujan harian (mm) untuk kebun + tanggal ini
+  /// Total curah hujan harian (mm) untuk kebun + tanggal + sumber ini
   totalMm   Float
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// Composite primary key → bisa pakai upsert([kebunCode, tanggal])
-  @@id([kebunCode, tanggal])
+  /// Composite primary key → bisa pakai upsert([kebunCode, tanggal, sumber])
+  @@id([kebunCode, tanggal, sumber])
 
   @@index([tanggal])
-  @@index([kebunCode, tanggal], name: "idx_curah_kebun_tanggal")
+  @@index([kebunCode, tanggal, sumber], name: "idx_curah_kebun_tanggal")
+  @@index([sumber, tanggal], name: "idx_curah_sumber_tanggal")
 }

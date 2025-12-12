@@ -19,8 +19,12 @@ export default function CurahHujanPage() {
         </p>
       </div>
 
-      {/* Section yang sudah kita buat sebelumnya */}
-      <CurahHujanSection />
+      {/* Bungkus client section dengan suppressHydrationWarning
+          supaya perbedaan attribute kecil (aria-controls dari Radix Select)
+          tidak memunculkan hydration mismatch warning di console */}
+      <div suppressHydrationWarning>
+        <CurahHujanSection />
+      </div>
     </div>
   );
 }

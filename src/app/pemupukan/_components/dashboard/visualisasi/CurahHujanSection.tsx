@@ -24,7 +24,8 @@ import {
 } from "recharts";
 
 import ChartCard from "../../shared/ChartCard";
-import { KEBUN_LABEL, KEBUN_ORDER } from "../../../_config/constants"; import { Button } from "@/components/ui/button";
+import { KEBUN_LABEL, KEBUN_ORDER } from "../../../_config/constants";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -89,6 +90,8 @@ function getFirstDayOfCurrentMonthJakartaString(): string {
 }
 
 // =======================[ TIPE DATA & CONSTANT ]===========================
+
+type RainSource = "AWS" | "OMBROMETER";
 
 // Tipe data yang dipakai Recharts & tabel
 type RainChartItem = {
@@ -216,12 +219,19 @@ export default function CurahHujanSection() {
   );
 
   const [selectedKebun, setSelectedKebun] = useState<string>("");
-  const [chartData, setChartData] = useState<RainChartItem[]>([]);
+  const [importSource, setImportSource] = useState<RainSource>("AWS");
+
+  const [chartDataAws, setChartDataAws] = useState<RainChartItem[]>([]);
+  const [chartDataOmbro, setChartDataOmbro] = useState<RainChartItem[]>([]);
+  const [tableSource, setTableSource] = useState<RainSource>("AWS");
+
   const [loadingChart, setLoadingChart] = useState(false);
   const [importing, setImporting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const chartRef = useRef<HTMLDivElement | null>(null);
+
+  // Wrapper berisi 2 grafik (AWS + Ombrometer) untuk di-export PDF
+  const pdfWrapperRef = useRef<HTMLDivElement | null>(null);
 
   const kebunOptions = useMemo(
     () =>
@@ -232,27 +242,37 @@ export default function CurahHujanSection() {
     []
   );
 
+  const hasAnyKebun = kebunOptions.length > 0;
+
   /**
-   * Ambil data curah hujan:
+   * Ambil data curah hujan untuk 1 sumber (AWS / OMBROMETER):
    * - dailyDate: harian di tanggal ini (untuk bar daily)
    * - rangeStart & rangeEnd: total range (untuk bar total)
    *
    * Lalu merge dengan seluruh daftar kebun,
    * sehingga setiap kebun SELALU muncul di chart & tabel.
    */
-  const fetchChartData = useCallback(
-    async (dailyDateStr: string, startDateStr: string, endDateStr: string) => {
-      setLoadingChart(true);
+  const fetchChartForSource = useCallback(
+    async (
+      sumber: RainSource,
+      dailyDateStr: string,
+      startDateStr: string,
+      endDateStr: string
+    ) => {
       try {
         const params = new URLSearchParams({
           dailyDate: dailyDateStr,
           start: startDateStr,
           end: endDateStr,
+          sumber,
         });
 
         const res = await fetch(`/api/curah-hujan?${params.toString()}`);
         if (!res.ok) {
-          console.error("Gagal fetch curah hujan", await res.text());
+          console.error(
+            `Gagal fetch curah hujan (${sumber})`,
+            await res.text()
+          );
           return;
         }
         const json = (await res.json()) as {
@@ -292,11 +312,13 @@ export default function CurahHujanSection() {
           };
         });
 
-        setChartData(merged);
+        if (sumber === "AWS") {
+          setChartDataAws(merged);
+        } else {
+          setChartDataOmbro(merged);
+        }
       } catch (err) {
-        console.error("fetchChartData error", err);
-      } finally {
-        setLoadingChart(false);
+        console.error(`fetchChartForSource error (${sumber})`, err);
       }
     },
     [kebunOptions]
@@ -304,10 +326,16 @@ export default function CurahHujanSection() {
 
   // load awal & re-fetch saat dailyDate / rangeStart / rangeEnd berubah
   useEffect(() => {
-    if (dailyDate && rangeStart && rangeEnd) {
-      void fetchChartData(dailyDate, rangeStart, rangeEnd);
-    }
-  }, [dailyDate, rangeStart, rangeEnd, fetchChartData]);
+    if (!dailyDate || !rangeStart || !rangeEnd) return;
+
+    setLoadingChart(true);
+    Promise.all([
+      fetchChartForSource("AWS", dailyDate, rangeStart, rangeEnd),
+      fetchChartForSource("OMBROMETER", dailyDate, rangeStart, rangeEnd),
+    ])
+      .catch((err) => console.error("Fetch curah hujan kedua sumber error:", err))
+      .finally(() => setLoadingChart(false));
+  }, [dailyDate, rangeStart, rangeEnd, fetchChartForSource]);
 
   /**
    * Klik tombol "Import Excel Curah Hujan"
@@ -331,18 +359,24 @@ export default function CurahHujanSection() {
   }, [selectedKebun]);
 
   /**
-   * Export PDF (maks ±1 MB, judul rata tengah)
-   */
+ * Export PDF:
+ * - background cerah
+ * - 1 halaman berisi 2 grafik (AWS & Ombrometer)
+ * - Styling putih & besar HANYA di dokumen clone (bukan di UI asli)
+ * - Semua stylesheet dihapus supaya error oklab/oklch hilang
+ * - (UPDATE) judul grafik PDF disederhanakan, jarak header diperbesar,
+ *            semua teks jadi hitam, legend disembunyikan (PDF saja)
+ */
   const handleExportPdf = useCallback(async () => {
-    if (!chartRef.current) {
+    if (!pdfWrapperRef.current) {
       await glassSwal.fire({
         icon: "info",
         title: "Grafik belum siap",
         html: `
-          <div class="text-xs text-slate-200">
-            Grafik belum dapat diexport. Pastikan data sudah tampil terlebih dahulu.
-          </div>
-        `,
+        <div class="text-xs text-slate-200">
+          Grafik belum dapat diexport. Pastikan data sudah tampil terlebih dahulu.
+        </div>
+      `,
       });
       return;
     }
@@ -353,33 +387,178 @@ export default function CurahHujanSection() {
         import("jspdf"),
       ]);
 
-      // Render area chart ke canvas
-      const canvas = await html2canvas(chartRef.current, {
-        scale: 2,
-        backgroundColor: "#020617", // bg-slate-950
+      const canvas = await html2canvas(pdfWrapperRef.current, {
+        scale: 3,
+        backgroundColor: "#F3F4F6",
+        useCORS: true,
+        onclone: (doc: Document) => {
+          try {
+            const wrapper = doc.getElementById(
+              "curah-hujan-pdf-wrapper"
+            ) as HTMLDivElement | null;
+
+            if (wrapper) {
+              // Card besar (A + B)
+              wrapper.style.backgroundColor = "#FFFFFF";
+              wrapper.style.padding = "22px";
+              wrapper.style.boxSizing = "border-box";
+              wrapper.style.borderRadius = "18px";
+              wrapper.style.border = "1px solid #E5E7EB";
+              wrapper.style.maxWidth = "1100px";
+              wrapper.style.margin = "0 auto";
+              wrapper.style.display = "block";
+
+              const chartContainers =
+                wrapper.querySelectorAll<HTMLDivElement>(
+                  "[data-chart-container='true']"
+                );
+
+              chartContainers.forEach((el, idx) => {
+                el.style.backgroundColor = "#FFFFFF";
+                el.style.border = "1px solid #E5E7EB";
+                el.style.borderRadius = "14px";
+                el.style.padding = "14px";
+                el.style.height = "320px";
+                el.style.boxSizing = "border-box";
+                el.style.marginBottom =
+                  idx === chartContainers.length - 1 ? "0" : "18px";
+
+                // Header atas chart
+                const headerRow = el.querySelector<HTMLDivElement>(
+                  "div.mb-1.flex.items-center.justify-between"
+                );
+
+                if (headerRow) {
+                  headerRow.style.marginBottom = "12px";
+                  headerRow.style.paddingBottom = "6px";
+                  headerRow.style.borderBottom = "1px solid #E5E7EB";
+
+                  // Judul kiri
+                  const leftTitle =
+                    headerRow.querySelector<HTMLSpanElement>(
+                      "span.text-\\[11px\\].font-semibold"
+                    );
+
+                  if (leftTitle) {
+                    leftTitle.textContent =
+                      idx === 0
+                        ? "Curah Hujan Per Kebun - AWS"
+                        : "Curah Hujan Per Kebun - Ombrometer";
+                    leftTitle.style.color = "#111827";
+                    leftTitle.style.fontSize = "13px";
+                    leftTitle.style.fontWeight = "700";
+                  }
+
+                  // HAPUS tulisan kanan ("Total ...") karena tidak dibutuhkan
+                  const rightMeta =
+                    headerRow.querySelector<HTMLSpanElement>(
+                      "span.text-\\[10px\\]"
+                    );
+                  if (rightMeta) {
+                    rightMeta.textContent = "";
+                    rightMeta.style.display = "none";
+                  }
+                }
+
+                // Hapus legend (PDF saja)
+                const legends = el.querySelectorAll<HTMLElement>(
+                  ".recharts-legend-wrapper"
+                );
+                legends.forEach((lg) => {
+                  lg.style.display = "none";
+                  lg.style.visibility = "hidden";
+                  lg.style.height = "0";
+                  lg.style.overflow = "hidden";
+                });
+              });
+
+              // Paksa warna teks hitam via <style> internal di clone (PDF saja)
+              // Ini penting karena banyak label Recharts pakai fill/opacity bawaan.
+              const forceStyle = doc.createElement("style");
+              forceStyle.textContent = `
+              /* Semua teks di dalam SVG Recharts */
+              #curah-hujan-pdf-wrapper svg text,
+              #curah-hujan-pdf-wrapper svg tspan {
+                fill: #111827 !important;
+                color: #111827 !important;
+                opacity: 1 !important;
+              }
+
+              /* Tick / label spesifik Recharts */
+              #curah-hujan-pdf-wrapper .recharts-text,
+              #curah-hujan-pdf-wrapper .recharts-cartesian-axis-tick-value,
+              #curah-hujan-pdf-wrapper .recharts-label,
+              #curah-hujan-pdf-wrapper .recharts-cartesian-axis-tick text,
+              #curah-hujan-pdf-wrapper .recharts-cartesian-axis-tick tspan {
+                fill: #111827 !important;
+                color: #111827 !important;
+                opacity: 1 !important;
+              }
+            `;
+              doc.head.appendChild(forceStyle);
+            }
+
+            // Hapus semua stylesheet (tailwind/next) supaya html2canvas tidak error lab/oklab/oklch
+            const styleNodes = doc.querySelectorAll(
+              "style:not([data-keep-pdf='1']), link[rel='stylesheet']"
+            );
+            styleNodes.forEach((node) => {
+              // NOTE: kita biarkan <style> forceStyle yang baru disisipkan
+              // Cara aman: jangan hapus style yang isinya kita butuh.
+              // Karena selector di atas dapat ikut ngehapus, jadi kita skip yang ada id? -> kita pakai pengecekan konten:
+              if (node.tagName.toLowerCase() === "style") {
+                const s = node as HTMLStyleElement;
+                const txt = s.textContent || "";
+                if (txt.includes("#curah-hujan-pdf-wrapper svg text")) return;
+              }
+              const parent = node.parentNode;
+              if (parent) parent.removeChild(node);
+            });
+
+            // Force via attribute juga (untuk kasus inline fill abu2 + tspan)
+            const wrapper2 = doc.getElementById("curah-hujan-pdf-wrapper");
+            if (wrapper2) {
+              const texts = wrapper2.querySelectorAll<SVGTextElement>("svg text");
+              texts.forEach((t) => {
+                t.setAttribute("fill", "#111827");
+                t.setAttribute("opacity", "1");
+                t.style.fill = "#111827";
+                t.style.opacity = "1";
+              });
+
+              const tspans = wrapper2.querySelectorAll<SVGTSpanElement>("svg tspan");
+              tspans.forEach((ts) => {
+                ts.setAttribute("fill", "#111827");
+                ts.setAttribute("opacity", "1");
+                ts.style.fill = "#111827";
+                ts.style.opacity = "1";
+              });
+            }
+          } catch (err) {
+            console.warn("html2canvas onclone cleanup failed:", err);
+          }
+        },
       });
 
-      const pageTitle = "Curah Hujan per Kebun";
+      const pageTitle = "Curah Hujan per Kebun (AWS & Ombrometer)";
       const pageSubtitle = `Harian ${dailyDate || "-"} • Total ${rangeStart || "-"
         } s/d ${rangeEnd || "-"}`;
-      const fileName = `curah-hujan-${dailyDate || "periode"}.pdf`;
+      const fileName = `curah-hujan-aws-ombro-${dailyDate || "periode"}.pdf`;
 
       const maxBytes = 1024 * 1024; // 1 MB
       const qualitySteps = [0.9, 0.7, 0.5, 0.35];
 
       for (let i = 0; i < qualitySteps.length; i += 1) {
         const q = qualitySteps[i];
-
-        // JPEG jauh lebih kecil dari PNG
         const imgData = canvas.toDataURL("image/jpeg", q);
 
         const pdf = new jsPDF("landscape", "pt", "a4");
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
 
-        const marginSide = 40;
-        const chartTopY = 70;
-        const chartBottomMargin = 40;
+        const marginSide = 20;
+        const chartTopY = 65;
+        const chartBottomMargin = 24;
         const availableHeight = pageHeight - chartTopY - chartBottomMargin;
 
         let imgWidth = pageWidth - marginSide * 2;
@@ -391,19 +570,17 @@ export default function CurahHujanSection() {
           imgWidth *= ratio;
         }
 
-        const imgX = (pageWidth - imgWidth) / 2; // center
+        const imgX = (pageWidth - imgWidth) / 2;
         const imgY = chartTopY;
 
-        // Judul & subjudul rata tengah
         pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(14);
-        pdf.text(pageTitle, pageWidth / 2, 28, { align: "center" });
+        pdf.setFontSize(16);
+        pdf.text(pageTitle, pageWidth / 2, 26, { align: "center" });
 
         pdf.setFont("helvetica", "normal");
         pdf.setFontSize(11);
         pdf.text(pageSubtitle, pageWidth / 2, 44, { align: "center" });
 
-        // Gambar chart
         pdf.addImage(imgData, "JPEG", imgX, imgY, imgWidth, imgHeight, "", "FAST");
 
         const blob = pdf.output("blob") as Blob;
@@ -420,17 +597,22 @@ export default function CurahHujanSection() {
         icon: "error",
         title: "Gagal export PDF",
         html: `
-          <div class="text-xs text-slate-200">
-            Terjadi kesalahan saat membuat file PDF.<br/>
-            Pastikan koneksi stabil lalu coba lagi.
-          </div>
-        `,
+        <div class="text-xs text-slate-200">
+          Terjadi kesalahan saat membuat file PDF.<br/>
+          (Detail: ${err instanceof Error ? err.message : "unknown error"})<br/>
+          Pastikan koneksi stabil lalu coba lagi.
+        </div>
+      `,
       });
     }
   }, [dailyDate, rangeStart, rangeEnd]);
 
+
+
+
   /**
    * Import Excel
+   * - sekarang menyertakan sumber: "AWS" / "OMBROMETER"
    */
   const handleImportExcel = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -501,8 +683,12 @@ export default function CurahHujanSection() {
         let headerRowIndex = -1;
         let headerRow: (string | number)[] = [];
 
-        const maxScan = Math.min(rows.length, 20); // scan max 20 baris pertama
-        for (let i = 0; i < maxScan; i += 1) {
+        // ⬅️ Mulai scan dari baris ke-1 (index 1) supaya baris pertama
+        //     "Data Cuaca ..." selalu diabaikan.
+        const startScanIndex = rows.length > 1 ? 1 : 0;
+        const maxScan = Math.min(rows.length, 80); // scan max 80 baris pertama
+
+        for (let i = startScanIndex; i < maxScan; i += 1) {
           const candidate = rows[i] as (string | number)[];
           const norm = candidate.map((c) => normalizeHeaderName(String(c)));
 
@@ -529,7 +715,9 @@ export default function CurahHujanSection() {
         }
 
         if (headerRowIndex === -1) {
-          const firstRow = rows[0] ?? [];
+          // ⬅️ Contoh baris awal yang ditampilkan juga bukan baris 0,
+          //    tapi baris pertama yang ikut discan (setelah deskripsi).
+          const firstRow = rows[startScanIndex] ?? [];
           await glassSwal.fire({
             icon: "error",
             title: "Kolom tidak ditemukan",
@@ -629,6 +817,7 @@ export default function CurahHujanSection() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               kebunCode: selectedKebun,
+              sumber: importSource,
               rows: chunk,
             }),
           });
@@ -674,6 +863,7 @@ export default function CurahHujanSection() {
               Berhasil mengakumulasikan <b>${totalDaysAggregated}</b> hari curah hujan<br/>
               dari <b>${totalRawRows}</b> baris data untuk kebun
               <b>${KEBUN_LABEL[selectedKebun] ?? selectedKebun}</b>.<br/>
+              Sumber: <b>${importSource}</b><br/>
               Data dikirim dalam <b>${Math.ceil(
             totalRawRows / CHUNK_SIZE
           )}</b> batch (maks ${CHUNK_SIZE} baris per batch).
@@ -682,9 +872,14 @@ export default function CurahHujanSection() {
           confirmButtonText: "OK",
         });
 
-        // Setelah import, refresh chart untuk tanggal & range yang sedang dipilih
+        // Setelah import, refresh grafik untuk sumber yang dipilih
         if (dailyDate && rangeStart && rangeEnd) {
-          await fetchChartData(dailyDate, rangeStart, rangeEnd);
+          await fetchChartForSource(
+            importSource,
+            dailyDate,
+            rangeStart,
+            rangeEnd
+          );
         }
       } catch (err) {
         console.error("handleImportExcel error", err);
@@ -701,7 +896,14 @@ export default function CurahHujanSection() {
         setImporting(false);
       }
     },
-    [selectedKebun, dailyDate, rangeStart, rangeEnd, fetchChartData]
+    [
+      selectedKebun,
+      importSource,
+      dailyDate,
+      rangeStart,
+      rangeEnd,
+      fetchChartForSource,
+    ]
   );
 
   /* =========================[ EDIT & DELETE HANDLER ]========================= */
@@ -714,7 +916,8 @@ export default function CurahHujanSection() {
         html: `
           <div class="text-xs text-slate-300 mb-2">
             Tanggal harian: <code>${dailyDate}</code><br/>
-            Kebun: <b>${row.kebunCode} – ${row.kebunName}</b>
+            Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
+            Sumber: <b>${tableSource}</b>
           </div>
         `,
         input: "number",
@@ -753,6 +956,7 @@ export default function CurahHujanSection() {
             kebunCode: row.kebunCode,
             date: dailyDate,
             totalMm: newValue,
+            sumber: tableSource,
           }),
         });
 
@@ -785,7 +989,12 @@ export default function CurahHujanSection() {
         });
 
         if (dailyDate && rangeStart && rangeEnd) {
-          await fetchChartData(dailyDate, rangeStart, rangeEnd);
+          await fetchChartForSource(
+            tableSource,
+            dailyDate,
+            rangeStart,
+            rangeEnd
+          );
         }
       } catch (err) {
         console.error("handleEditRow error", err);
@@ -800,7 +1009,7 @@ export default function CurahHujanSection() {
         });
       }
     },
-    [dailyDate, rangeStart, rangeEnd, fetchChartData]
+    [dailyDate, rangeStart, rangeEnd, fetchChartForSource, tableSource]
   );
 
   const handleDeleteRow = useCallback(
@@ -812,13 +1021,14 @@ export default function CurahHujanSection() {
         html: `
         <div class="text-xs text-slate-200 mb-1">
           <div class="mb-2">
-            Kebun: <b>${row.kebunCode} – ${row.kebunName}</b>
+            Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
+            Sumber: <b>${tableSource}</b>
           </div>
           <div class="text-[11px] text-slate-300">
             Pilih jenis penghapusan:
             <ul class="mt-1 list-disc list-inside space-y-0.5">
-              <li><b>Hapus per tanggal</b>: pilih salah satu tanggal yang sudah ada di database.</li>
-              <li><b>Hapus semua</b>: seluruh data curah hujan untuk kebun ini (semua tanggal).</li>
+              <li><b>Hapus per tanggal</b>: pilih salah satu tanggal yang sudah ada di database (untuk sumber ini).</li>
+              <li><b>Hapus semua</b>: seluruh data curah hujan untuk kebun ini (sumber ini saja).</li>
             </ul>
           </div>
         </div>
@@ -840,7 +1050,7 @@ export default function CurahHujanSection() {
           const resDates = await fetch(
             `/api/curah-hujan?mode=listDates&kebunCode=${encodeURIComponent(
               row.kebunCode
-            )}`
+            )}&sumber=${tableSource}`
           );
 
           if (!resDates.ok) {
@@ -867,7 +1077,7 @@ export default function CurahHujanSection() {
               title: "Tidak ada data",
               html: `
               <div class="text-xs text-slate-200">
-                Tidak ada tanggal data curah hujan yang bisa dihapus untuk kebun ini.
+                Tidak ada tanggal data curah hujan yang bisa dihapus untuk kebun ini (sumber ${tableSource}).
               </div>
             `,
             });
@@ -887,6 +1097,7 @@ export default function CurahHujanSection() {
             html: `
             <div class="text-xs text-slate-300 mb-2">
               Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
+              Sumber: <b>${tableSource}</b><br/>
               Pilih salah satu tanggal yang sudah memiliki data di database.
             </div>
             <select id="tanggal-hapus-select"
@@ -916,7 +1127,8 @@ export default function CurahHujanSection() {
           });
 
           // batal / close → stop
-          if (!pilihTanggalResult.isConfirmed || !pilihTanggalResult.value) return;
+          if (!pilihTanggalResult.isConfirmed || !pilihTanggalResult.value)
+            return;
 
           const dateToDelete = pilihTanggalResult.value as string;
 
@@ -926,10 +1138,11 @@ export default function CurahHujanSection() {
             html: `
             <div class="text-xs text-slate-300 mb-2">
               Tanggal: <code>${dateToDelete}</code><br/>
-              Kebun: <b>${row.kebunCode} – ${row.kebunName}</b>
+              Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
+              Sumber: <b>${tableSource}</b>
             </div>
             <div class="text-[11px] text-amber-200">
-              Tindakan ini akan menghapus data harian untuk tanggal tersebut.<br/>
+              Tindakan ini akan menghapus data harian untuk tanggal tersebut pada sumber ini.<br/>
               Akumulasi total periode akan otomatis menyesuaikan.
             </div>
           `,
@@ -946,6 +1159,7 @@ export default function CurahHujanSection() {
             body: JSON.stringify({
               kebunCode: row.kebunCode,
               date: dateToDelete,
+              sumber: tableSource,
             }),
           });
 
@@ -972,13 +1186,18 @@ export default function CurahHujanSection() {
             title: "Berhasil",
             html: `
             <div class="text-xs text-slate-200">
-              Data harian tanggal <code>${dateToDelete}</code> berhasil dihapus.
+              Data harian tanggal <code>${dateToDelete}</code> (sumber ${tableSource}) berhasil dihapus.
             </div>
           `,
           });
 
           if (dailyDate && rangeStart && rangeEnd) {
-            await fetchChartData(dailyDate, rangeStart, rangeEnd);
+            await fetchChartForSource(
+              tableSource,
+              dailyDate,
+              rangeStart,
+              rangeEnd
+            );
           }
         } catch (err) {
           console.error("handleDeleteRow (per tanggal) error", err);
@@ -996,7 +1215,7 @@ export default function CurahHujanSection() {
         return;
       }
 
-      // ---------- MODE 2: Hapus semua data kebun ----------
+      // ---------- MODE 2: Hapus semua data kebun untuk sumber ini ----------
       if (pilih.isDenied) {
         const confirmAll = await glassSwal.fire({
           icon: "warning",
@@ -1004,8 +1223,9 @@ export default function CurahHujanSection() {
           html: `
           <div class="text-xs text-slate-300 mb-2">
             Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
+            Sumber: <b>${tableSource}</b><br/>
             Tindakan ini akan menghapus <b>seluruh riwayat curah hujan</b><br/>
-            untuk kebun ini (semua tanggal).
+            untuk kebun ini pada sumber <b>${tableSource}</b> (semua tanggal).
           </div>
           <div class="text-[11px] text-red-300">
             PERINGATAN: Tindakan tidak bisa dibatalkan.
@@ -1025,6 +1245,7 @@ export default function CurahHujanSection() {
             body: JSON.stringify({
               kebunCode: row.kebunCode,
               deleteAll: true,
+              sumber: tableSource,
             }),
           });
 
@@ -1051,13 +1272,18 @@ export default function CurahHujanSection() {
             title: "Berhasil",
             html: `
             <div class="text-xs text-slate-200">
-              Seluruh data curah hujan untuk kebun <b>${row.kebunCode}</b> berhasil dihapus.
+              Seluruh data curah hujan untuk kebun <b>${row.kebunCode}</b> (sumber ${tableSource}) berhasil dihapus.
             </div>
           `,
           });
 
           if (dailyDate && rangeStart && rangeEnd) {
-            await fetchChartData(dailyDate, rangeStart, rangeEnd);
+            await fetchChartForSource(
+              tableSource,
+              dailyDate,
+              rangeStart,
+              rangeEnd
+            );
           }
         } catch (err) {
           console.error("handleDeleteRow (delete all) error", err);
@@ -1073,21 +1299,21 @@ export default function CurahHujanSection() {
         }
       }
     },
-    [dailyDate, rangeStart, rangeEnd, fetchChartData]
+    [dailyDate, rangeStart, rangeEnd, fetchChartForSource, tableSource]
   );
 
-  const hasAnyKebun = kebunOptions.length > 0;
+  // Data tabel mengikuti sumber yang dipilih
+  const tableData = tableSource === "AWS" ? chartDataAws : chartDataOmbro;
 
   return (
     <>
       {/* CARD GRAFIK */}
       <section className="mt-3">
         <ChartCard
-          title=""
-          subtitle="Curah hujan"
-        // ❌ headerRight dihapus supaya tidak sejajar dengan button Filter utama
+          title="Curah Hujan per Kebun"
+          subtitle="Grafik atas menampilkan data AWS, grafik bawah menampilkan data Ombrometer. Data diambil dari hasil import Excel per kebun."
         >
-          {/* ✅ CONTROL BAR DIPINDAH KE DALAM CARD, DI ATAS CHART */}
+          {/* CONTROL BAR */}
           <div
             className="
               mb-3
@@ -1154,6 +1380,27 @@ export default function CurahHujanSection() {
               </Select>
             </div>
 
+            {/* Pilih sumber untuk import */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="whitespace-nowrap text-[11px] text-slate-300">
+                Sumber import:
+              </span>
+              <Select
+                value={importSource}
+                onValueChange={(v) =>
+                  setImportSource(v as RainSource)
+                }
+              >
+                <SelectTrigger className="h-8 w-[160px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
+                  <SelectItem value="AWS">AWS</SelectItem>
+                  <SelectItem value="OMBROMETER">Ombrometer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Input file (hidden) + tombol Import & Export */}
             <input
               ref={fileInputRef}
@@ -1180,103 +1427,230 @@ export default function CurahHujanSection() {
                 size="sm"
                 variant="outline"
                 onClick={handleExportPdf}
-                disabled={loadingChart || !chartData.length}
+                disabled={
+                  loadingChart ||
+                  (!chartDataAws.length && !chartDataOmbro.length)
+                }
                 className="h-8 px-3 text-[11px]"
               >
-                Export PDF
+                Export PDF (2 Grafik)
               </Button>
             </div>
           </div>
 
-          {/* CHART */}
-          <div ref={chartRef} className="h-[320px] w-full">
-            {loadingChart ? (
-              <div className="flex h-full items-center justify-center text-sm text-slate-300">
-                Memuat data curah hujan...
+          {/* WRAPPER 2 GRAFIK (untuk PDF juga) */}
+          <div
+            ref={pdfWrapperRef}
+            id="curah-hujan-pdf-wrapper"
+            className="space-y-5 rounded-xl bg-slate-950/40 p-3"
+          >
+            {/* GRAFIK AWS */}
+            <div
+              data-chart-container="true"
+              className="h-[260px] w-full rounded-xl border border-emerald-500/20 bg-slate-950/60 p-2"
+            >
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-emerald-200">
+                  Curah Hujan per Kebun – AWS
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Harian {dailyDate} • Total {rangeStart} s/d {rangeEnd}
+                </span>
               </div>
-            ) : !hasAnyKebun ? (
-              <div className="flex h-full items-center justify-center text-center text-sm text-slate-400">
-                Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={chartData}
-                  margin={{ top: 10, right: 10, left: 0, bottom: 30 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                  <XAxis
-                    dataKey="kebunCode"
-                    tick={{ fontSize: 11, fill: "#E5E7EB" }}
-                    angle={-20}
-                    textAnchor="end"
-                    height={40}
-                  />
-                  <YAxis
-                    allowDecimals={false}
-                    tick={{ fontSize: 11, fill: "#E5E7EB" }}
-                    label={{
-                      value: "Curah hujan (mm)",
-                      angle: -90,
-                      position: "insideLeft",
-                      offset: 0,
-                      fill: "#E5E7EB",
-                      fontSize: 11,
-                    }}
-                  />
-                  <Tooltip
-                    content={(props) => (
-                      <RainTooltip {...props} dailyDate={dailyDate} />
-                    )}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11, color: "#E5E7EB" }} />
-
-                  <Bar
-                    dataKey="dailyMm"
-                    name={`Harian (${dailyDate})`}
-                    barSize={18}
-                    radius={[8, 8, 0, 0]}
+              {loadingChart ? (
+                <div className="flex h-[210px] items-center justify-center text-sm text-slate-300">
+                  Memuat data curah hujan...
+                </div>
+              ) : !hasAnyKebun ? (
+                <div className="flex h-[210px] items-center justify-center text-center text-sm text-slate-400">
+                  Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={chartDataAws}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 30 }}
                   >
-                    <LabelList
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                    <XAxis
+                      dataKey="kebunCode"
+                      tick={{ fontSize: 11, fill: "#E5E7EB" }}
+                      angle={-20}
+                      textAnchor="end"
+                      height={40}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 11, fill: "#E5E7EB" }}
+                      label={{
+                        value: "",
+                        angle: -90,
+                        position: "insideLeft",
+                        offset: 0,
+                        fill: "#E5E7EB",
+                        fontSize: 11,
+                      }}
+                    />
+                    <Tooltip
+                      content={(props) => (
+                        <RainTooltip {...props} dailyDate={dailyDate} />
+                      )}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: 11, color: "#E5E7EB" }}
+                    />
+
+                    <Bar
                       dataKey="dailyMm"
-                      position="top"
-                      className="fill-slate-100 text-[10px]"
-                    />
-                    {chartData.map((item, idx) => {
-                      const pair = getKebunColorPair(idx);
-                      return (
-                        <Cell
-                          key={`${item.kebunCode}-daily`}
-                          fill={pair.light}
-                        />
-                      );
-                    })}
-                  </Bar>
+                      name={`Harian (${dailyDate})`}
+                      barSize={18}
+                      radius={[8, 8, 0, 0]}
+                    >
+                      <LabelList
+                        dataKey="dailyMm"
+                        position="top"
+                        className="fill-slate-100 text-[10px]"
+                      />
+                      {chartDataAws.map((item, idx) => {
+                        const pair = getKebunColorPair(idx);
+                        return (
+                          <Cell
+                            key={`${item.kebunCode}-aws-daily`}
+                            fill={pair.light}
+                          />
+                        );
+                      })}
+                    </Bar>
 
-                  <Bar
-                    dataKey="mtdMm"
-                    name={`Total (${rangeStart} s/d ${rangeEnd})`}
-                    barSize={18}
-                    radius={[8, 8, 0, 0]}
-                  >
-                    <LabelList
+                    <Bar
                       dataKey="mtdMm"
-                      position="top"
-                      className="fill-slate-100 text-[10px]"
+                      name={`Total (${rangeStart} s/d ${rangeEnd})`}
+                      barSize={18}
+                      radius={[8, 8, 0, 0]}
+                    >
+                      <LabelList
+                        dataKey="mtdMm"
+                        position="top"
+                        className="fill-slate-100 text-[10px]"
+                      />
+                      {chartDataAws.map((item, idx) => {
+                        const pair = getKebunColorPair(idx);
+                        return (
+                          <Cell
+                            key={`${item.kebunCode}-aws-mtd`}
+                            fill={pair.dark}
+                          />
+                        );
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* GRAFIK OMBROMETER */}
+            <div
+              data-chart-container="true"
+              className="h-[260px] w-full rounded-xl border border-emerald-500/20 bg-slate-950/60 p-2"
+            >
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-emerald-200">
+                  Curah Hujan per Kebun – Ombrometer
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Harian {dailyDate} • Total {rangeStart} s/d {rangeEnd}
+                </span>
+              </div>
+              {loadingChart ? (
+                <div className="flex h-[210px] items-center justify-center text-sm text-slate-300">
+                  Memuat data curah hujan...
+                </div>
+              ) : !hasAnyKebun ? (
+                <div className="flex h-[210px] items-center justify-center text-center text-sm text-slate-400">
+                  Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={chartDataOmbro}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 30 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                    <XAxis
+                      dataKey="kebunCode"
+                      tick={{ fontSize: 11, fill: "#E5E7EB" }}
+                      angle={-20}
+                      textAnchor="end"
+                      height={40}
                     />
-                    {chartData.map((item, idx) => {
-                      const pair = getKebunColorPair(idx);
-                      return (
-                        <Cell
-                          key={`${item.kebunCode}-mtd`}
-                          fill={pair.dark}
-                        />
-                      );
-                    })}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 11, fill: "#E5E7EB" }}
+                      label={{
+                        value: "Curah hujan (mm)",
+                        angle: -90,
+                        position: "insideLeft",
+                        offset: 0,
+                        fill: "#E5E7EB",
+                        fontSize: 11,
+                      }}
+                    />
+                    <Tooltip
+                      content={(props) => (
+                        <RainTooltip {...props} dailyDate={dailyDate} />
+                      )}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: 11, color: "#E5E7EB" }}
+                    />
+
+                    <Bar
+                      dataKey="dailyMm"
+                      name={`Harian (${dailyDate})`}
+                      barSize={18}
+                      radius={[8, 8, 0, 0]}
+                    >
+                      <LabelList
+                        dataKey="dailyMm"
+                        position="top"
+                        className="fill-slate-100 text-[10px]"
+                      />
+                      {chartDataOmbro.map((item, idx) => {
+                        const pair = getKebunColorPair(idx);
+                        return (
+                          <Cell
+                            key={`${item.kebunCode}-ombro-daily`}
+                            fill={pair.light}
+                          />
+                        );
+                      })}
+                    </Bar>
+
+                    <Bar
+                      dataKey="mtdMm"
+                      name={`Total (${rangeStart} s/d ${rangeEnd})`}
+                      barSize={18}
+                      radius={[8, 8, 0, 0]}
+                    >
+                      <LabelList
+                        dataKey="mtdMm"
+                        position="top"
+                        className="fill-slate-100 text-[10px]"
+                      />
+                      {chartDataOmbro.map((item, idx) => {
+                        const pair = getKebunColorPair(idx);
+                        return (
+                          <Cell
+                            key={`${item.kebunCode}-ombro-mtd`}
+                            fill={pair.dark}
+                          />
+                        );
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </div>
         </ChartCard>
       </section>
@@ -1285,9 +1659,26 @@ export default function CurahHujanSection() {
       <section className="mt-6">
         <ChartCard
           title="Data Curah Hujan per Kebun"
-          subtitle={`Tabel data untuk tanggal harian ${dailyDate} dan total periode ${rangeStart} s/d ${rangeEnd} (zona Asia/Jakarta). Anda dapat edit atau hapus data harian per kebun.`}
+          subtitle={`Tabel data untuk tanggal harian ${dailyDate} dan total periode ${rangeStart} s/d ${rangeEnd} (zona Asia/Jakarta). Anda dapat edit atau hapus data harian per kebun, dipisahkan per sumber AWS / Ombrometer.`}
         >
-          <div className="mt-3 max-h-[320px] w-full overflow-auto rounded-xl border border-emerald-500/20 bg-slate-950/40">
+          {/* Pilih sumber untuk tabel (edit / hapus) */}
+          <div className="mt-1 mb-2 flex items-center justify-end gap-2 text-[11px] text-slate-300">
+            <span className="whitespace-nowrap">Sumber data tabel:</span>
+            <Select
+              value={tableSource}
+              onValueChange={(v) => setTableSource(v as RainSource)}
+            >
+              <SelectTrigger className="h-7 w-[140px] border border-emerald-500/60 bg-slate-900 text-[11px] text-slate-100">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
+                <SelectItem value="AWS">AWS</SelectItem>
+                <SelectItem value="OMBROMETER">Ombrometer</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="mt-1 max-h-[320px] w-full overflow-auto rounded-xl border border-emerald-500/20 bg-slate-950/40">
             {!hasAnyKebun ? (
               <div className="flex h-32 items-center justify-center text-xs text-slate-400">
                 Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
@@ -1299,6 +1690,7 @@ export default function CurahHujanSection() {
                     <th className="px-3 py-2 text-left">Kebun</th>
                     <th className="px-3 py-2 text-left">Nama Kebun</th>
                     <th className="px-3 py-2 text-left">Tanggal Harian</th>
+                    <th className="px-3 py-2 text-left">Sumber</th>
                     <th className="px-3 py-2 text-right">Harian (mm)</th>
                     <th className="px-3 py-2 text-right">
                       Total Periode (mm)
@@ -1307,12 +1699,12 @@ export default function CurahHujanSection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {chartData.map((row, idx) => (
+                  {tableData.map((row, idx) => (
                     <tr
-                      key={row.kebunCode}
+                      key={`${row.kebunCode}-${idx}`}
                       className={`border-t border-emerald-500/10 ${idx % 2 === 0
-                          ? "bg-slate-950/20"
-                          : "bg-slate-900/10"
+                        ? "bg-slate-950/20"
+                        : "bg-slate-900/10"
                         }`}
                     >
                       <td className="px-3 py-1.5 font-mono text-[11px] text-slate-100">
@@ -1323,6 +1715,9 @@ export default function CurahHujanSection() {
                       </td>
                       <td className="px-3 py-1.5 text-[11px] text-slate-300">
                         <code>{dailyDate}</code>
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] text-emerald-200">
+                        {tableSource}
                       </td>
                       <td className="px-3 py-1.5 text-right font-mono text-[11px] text-slate-100">
                         {row.dailyMm.toFixed(2)}
