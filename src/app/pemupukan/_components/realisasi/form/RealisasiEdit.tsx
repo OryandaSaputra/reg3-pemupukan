@@ -158,38 +158,32 @@ function RealisasiEditContent() {
 
   // ================= FETCH DATA SATU RECORD =================
 
+  // ✅ GANTI ISI fungsi fetchRecord Anda dengan versi ini
   async function fetchRecord(id: number, showToastOnError = false) {
     try {
       setLoading(true);
 
-      // Gunakan GET tanpa query param → backend akan kembalikan semua data
-      const res = await fetch("/api/pemupukan/realisasi", {
+      const res = await fetch(`/api/pemupukan/realisasi?id=${id}`, {
         cache: "no-store",
       });
 
       if (!res.ok) {
+        if (res.status === 404) {
+          if (showToastOnError || !initialLoadingDone) {
+            await Swal.fire({
+              title: "Data tidak ditemukan",
+              text: "Realisasi dengan ID tersebut tidak ditemukan.",
+              icon: "error",
+              confirmButtonText: "OK",
+            });
+          }
+          router.push("/pemupukan/realisasi/riwayat");
+          return;
+        }
         throw new Error("Gagal mengambil data realisasi");
       }
 
-      const json = await res.json();
-      const dataArray: ApiRealisasi[] = Array.isArray(json)
-        ? json
-        : json.data;
-
-      const found = dataArray.find((r) => r.id === id);
-
-      if (!found) {
-        if (showToastOnError || !initialLoadingDone) {
-          await Swal.fire({
-            title: "Data tidak ditemukan",
-            text: "Realisasi dengan ID tersebut tidak ditemukan.",
-            icon: "error",
-            confirmButtonText: "OK",
-          });
-        }
-        router.push("/pemupukan/realisasi/riwayat");
-        return;
-      }
+      const found = (await res.json()) as ApiRealisasi;
 
       setRecordId(found.id);
 
@@ -205,17 +199,13 @@ function RealisasiEditContent() {
         inv: found.inv ? String(found.inv) : "",
         jenisPupuk: found.jenisPupuk || "NPK 13.6.27.4",
         aplikasi: found.aplikasiKe ? String(found.aplikasiKe) : "1",
-        dosis: found.dosisKgPerPokok
-          ? String(found.dosisKgPerPokok)
-          : "1",
+        dosis: found.dosisKgPerPokok ? String(found.dosisKgPerPokok) : "1",
         kgPupuk: found.kgPupuk
           ? String(found.kgPupuk)
           : computeKgPupuk(
-              found.inv ? String(found.inv) : "",
-              found.dosisKgPerPokok
-                ? String(found.dosisKgPerPokok)
-                : ""
-            ),
+            found.inv ? String(found.inv) : "",
+            found.dosisKgPerPokok ? String(found.dosisKgPerPokok) : ""
+          ),
       });
     } catch (err) {
       console.error(err);

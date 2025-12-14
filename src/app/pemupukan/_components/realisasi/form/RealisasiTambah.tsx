@@ -15,7 +15,6 @@ import {
 import { KEBUN_LABEL } from "../../../_config/constants";
 import { RefreshCcw, Save, Upload } from "lucide-react";
 import Swal from "sweetalert2";
-import { toIsoDateJakarta } from "../../../_services/dateHelpers";
 
 type Kategori = "TM" | "TBM" | "BIBITAN" | "";
 
@@ -70,40 +69,6 @@ function computeKgPupuk(invStr: string, dosisStr: string): string {
   const kg = inv * dosis;
   if (!Number.isFinite(kg) || kg === 0) return "";
   return String(kg);
-}
-
-// normalisasi header untuk matching fleksibel
-const normalize = (s: string) =>
-  String(s ?? "")
-    .normalize("NFKD")
-    .replace(/\s+/g, "")
-    .replace(/[^A-Z0-9]/gi, "")
-    .toUpperCase();
-
-// cari kandidat sebelum index tertentu (untuk KEBUN, KODE KEBUN, AFD, dll)
-function findBefore(
-  header: string[],
-  startIdx: number,
-  candidates: string[]
-): number {
-  const candNorm = candidates.map(normalize);
-  for (let i = startIdx - 1; i >= 0; i--) {
-    if (candNorm.includes(header[i])) return i;
-  }
-  return -1;
-}
-
-// cari kandidat setelah index tertentu (untuk TT, BLOK, LUAS, dst)
-function findAfter(
-  header: string[],
-  startIdx: number,
-  candidates: string[]
-): number {
-  const candNorm = candidates.map(normalize);
-  for (let i = startIdx + 1; i < header.length; i++) {
-    if (candNorm.includes(header[i])) return i;
-  }
-  return -1;
 }
 
 export default function RealisasiTambah() {
@@ -246,12 +211,10 @@ export default function RealisasiTambah() {
 
   // ============ IMPORT DARI EXCEL (BULK) ============
 
-  const handleImportExcel = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = e.target.files?.[0];
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const pickedFile = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
+    if (!pickedFile) return;
 
     if (!form.kategori) {
       Swal.fire({
@@ -264,425 +227,99 @@ export default function RealisasiTambah() {
     }
 
     setImporting(true);
-    try {
-      const XLSX = (await import("xlsx")) as typeof import("xlsx");
-      const arrayBuffer = await file.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, {
-        type: "array",
-        cellDates: false,
+
+    type ImportRealisasiResponse = {
+      message?: string;
+      count?: number;
+      deleted?: number;
+      totalParsed?: number;
+      sheetName?: string;
+      sheetNames?: string[];
+    };
+
+    async function upload(file: File, sheetName?: string) {
+      const fd = new FormData();
+      fd.append("file", file); // ✅ file sudah pasti File, bukan undefined
+      fd.append("kategori", form.kategori);
+      if (sheetName) fd.append("sheetName", sheetName);
+
+      return fetch("/api/pemupukan/realisasi", {
+        method: "POST",
+        body: fd,
       });
+    }
 
-      const sheetNames = workbook.SheetNames;
-      if (!sheetNames.length) {
-        await Swal.fire({
-          title: "File kosong",
-          text: "Workbook tidak memiliki sheet.",
-          icon: "warning",
-        });
-        setImporting(false);
-        return;
-      }
+    try {
+      // 1) coba upload tanpa sheetName
+      let res = await upload(pickedFile);
 
-      // === PILIH SHEET ===
-      let selectedSheetName = sheetNames[0];
+      // 2) jika server minta pilih sheet (tetap bisa milih sheet)
+      if (res.status === 409) {
+        const info: ImportRealisasiResponse = await res.json();
+        const sheetNames = info.sheetNames ?? [];
 
-      if (sheetNames.length > 1) {
+        if (!sheetNames.length) {
+          Swal.fire({
+            title: "Gagal",
+            text:
+              info.message ||
+              "Server meminta memilih sheet, tapi daftar sheet tidak tersedia.",
+            icon: "error",
+            confirmButtonText: "OK",
+          });
+          return;
+        }
+
         const { value: picked } = await Swal.fire({
           title: "Pilih Sheet",
           text: "Pilih nama sheet yang berisi data realisasi pemupukan.",
           icon: "question",
           input: "select",
-          inputOptions: sheetNames.reduce<Record<string, string>>(
-            (acc, name) => {
-              acc[name] = name;
-              return acc;
-            },
-            {}
-          ),
+          inputOptions: sheetNames.reduce<Record<string, string>>((acc, name) => {
+            acc[name] = name;
+            return acc;
+          }, {}),
           inputValue: sheetNames[0],
           showCancelButton: true,
           confirmButtonText: "Pakai sheet ini",
           cancelButtonText: "Batal",
         });
 
-        if (!picked) {
-          setImporting(false);
-          return;
-        }
+        if (!picked) return;
 
-        selectedSheetName = picked;
+        // upload ulang dengan sheetName
+        res = await upload(pickedFile, String(picked));
       }
 
-      const sheet = workbook.Sheets[selectedSheetName];
-
-      const rows = XLSX.utils.sheet_to_json<
-        (string | number | Date | null)[]
-      >(sheet, {
-        header: 1,
-        defval: "",
-      });
-
-      if (!rows.length) {
+      if (!res.ok) {
+        const text = await res.text();
         Swal.fire({
-          title: "File kosong",
-          text: "Sheet Excel tidak memiliki data.",
-          icon: "warning",
-          confirmButtonText: "OK",
-        });
-        return;
-      }
-
-      // === CARI HEADER REALISASI ===
-      let realHeaderRowIndex = -1;
-      let realHeaderNorm: string[] = [];
-      let idxTanggal = -1;
-
-      const maxScan = Math.min(rows.length, 20); // scan 20 baris teratas saja
-      for (let rIdx = 0; rIdx < maxScan; rIdx++) {
-        const norm = rows[rIdx].map((h) => normalize(String(h ?? "")));
-        const tIndex = norm.findIndex(
-          (c) => c === "TANGGAL" || c === "TGL"
-        );
-        if (tIndex !== -1) {
-          realHeaderRowIndex = rIdx;
-          realHeaderNorm = norm;
-          idxTanggal = tIndex;
-          break;
-        }
-      }
-
-      if (realHeaderRowIndex === -1 || idxTanggal === -1) {
-        console.log("DEBUG rows[0..5] = ", rows.slice(0, 5));
-        Swal.fire({
-          title: "Header Realisasi tidak ditemukan",
-          html:
-            "Tidak dapat menemukan header tabel Realisasi.<br/>" +
-            "Pastikan ada kolom <b>TANGGAL</b> di bagian kanan sheet (tabel Realisasi).",
+          title: "Import gagal",
+          text: text || "Gagal import realisasi. Pastikan format Excel sesuai.",
           icon: "error",
           confirmButtonText: "OK",
         });
         return;
       }
 
-      // === MAPPING KOLOM RELATIF TANGGAL ===
-      const idxAfd = findBefore(realHeaderNorm, idxTanggal, [
-        "AFD",
-        "AFDELING",
-      ]);
-      const idxKodeKebun = findBefore(realHeaderNorm, idxAfd, [
-        "KODEKEBUN",
-        "KODE_KEBUN",
-      ]);
-      const idxKebun = findBefore(realHeaderNorm, idxKodeKebun, ["KEBUN"]);
+      const json: ImportRealisasiResponse = await res.json();
 
-      const idxTt = findAfter(realHeaderNorm, idxTanggal, [
-        "TT",
-        "TAHUNTANAM",
-      ]);
-      const idxBlok = findAfter(realHeaderNorm, idxTt, ["BLOK"]);
-      const idxLuas = findAfter(realHeaderNorm, idxBlok, [
-        "LUAS",
-        "LUASHA",
-      ]);
-      const idxInv = findAfter(realHeaderNorm, idxLuas, [
-        "INV",
-        "POKOK",
-        "JUMLAHPOKOK",
-      ]);
-      const idxJenisPupuk = findAfter(realHeaderNorm, idxInv, [
-        "JENISPUPUK",
-        "PUPUK",
-      ]);
-      const idxAplikasi = findAfter(realHeaderNorm, idxJenisPupuk, [
-        "APLIKASI",
-        "APLIKASIKE",
-      ]);
-      const idxDosis = findAfter(realHeaderNorm, idxAplikasi, [
-        "DOSIS",
-        "DOSISKGPOKOK",
-      ]);
-      const idxKgPupuk = findAfter(realHeaderNorm, idxDosis, [
-        "KGPUKUP",
-        "KGPUPUK",
-        "KGPUPUKTOTAL",
-      ]);
-
-      const requiredIdx = [
-        idxKebun,
-        idxKodeKebun,
-        idxTanggal,
-        idxAfd,
-        idxTt,
-        idxBlok,
-        idxLuas,
-        idxInv,
-        idxJenisPupuk,
-        idxAplikasi,
-        idxDosis,
-        idxKgPupuk,
-      ];
-
-      if (requiredIdx.some((i) => i === -1)) {
-        console.log("HEADER REALISASI NORMALIZED:", realHeaderNorm, {
-          idxKebun,
-          idxKodeKebun,
-          idxTanggal,
-          idxAfd,
-          idxTt,
-          idxBlok,
-          idxLuas,
-          idxInv,
-          idxJenisPupuk,
-          idxAplikasi,
-          idxDosis,
-          idxKgPupuk,
-        });
-
-        Swal.fire({
-          title: "Header Realisasi tidak lengkap",
-          html:
-            "Berhasil menemukan kolom <b>TANGGAL</b>, tetapi kolom lain belum lengkap.<br/>" +
-            "Pastikan di tabel Realisasi ada header:<br/>" +
-            "<b>KEBUN, KODE KEBUN, AFD, TANGGAL, TT, BLOK, LUAS, INV, JENIS PUPUK, APLIKASI, DOSIS, KG PUPUK</b>",
-          icon: "error",
-          confirmButtonText: "OK",
-        });
-        return;
-      }
-
-      // === KUMPULKAN PAYLOAD REALISASI ===
-      type BulkPayload = {
-        kategori: string;
-        kebun: string;
-        kode_kebun: string;
-        tanggal: string | null | "-";
-        afd: string;
-        tt: string;
-        blok: string;
-        luas: number;
-        inv: number;
-        jenis_pupuk: string;
-        aplikasi: number;
-        dosis: number;
-        kg_pupuk: number;
-      };
-
-      const payloads: BulkPayload[] = [];
-
-      // forward-fill kebun & kode kebun (karena merge)
-      let lastKebun = "";
-      let lastKodeKebun = "";
-
-      // berhenti setelah beberapa baris realisasi kosong berturut-turut
-      let started = false;
-      let emptyAfterData = 0;
-      const MAX_EMPTY_AFTER_DATA = 5;
-
-      for (let i = realHeaderRowIndex + 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (!row || row.length === 0) {
-          if (started) {
-            emptyAfterData++;
-            if (emptyAfterData >= MAX_EMPTY_AFTER_DATA) break;
-          }
-          continue;
-        }
-
-        const kebunRaw = row[idxKebun];
-        const kodeKebunRaw = row[idxKodeKebun];
-        const tanggalRaw = row[idxTanggal];
-
-        const luasCell = idxLuas >= 0 ? row[idxLuas] : "";
-        const invCell = row[idxInv];
-        const jenisPupukCell = idxJenisPupuk >= 0 ? row[idxJenisPupuk] : "";
-        const aplikasiCell = idxAplikasi >= 0 ? row[idxAplikasi] : "";
-        const dosisCell = idxDosis >= 0 ? row[idxDosis] : "";
-        const kgPupukCell = idxKgPupuk >= 0 ? row[idxKgPupuk] : "";
-
-        // cek baris kosong berdasarkan kolom realisasi
-        const isRowEmpty =
-          String(kebunRaw ?? "").trim() === "" &&
-          String(kodeKebunRaw ?? "").trim() === "" &&
-          String(tanggalRaw ?? "").trim() === "" &&
-          String(luasCell ?? "").trim() === "" &&
-          String(invCell ?? "").trim() === "" &&
-          String(jenisPupukCell ?? "").trim() === "" &&
-          String(aplikasiCell ?? "").trim() === "" &&
-          String(dosisCell ?? "").trim() === "" &&
-          String(kgPupukCell ?? "").trim() === "";
-
-        if (isRowEmpty) {
-          if (started) {
-            emptyAfterData++;
-            if (emptyAfterData >= MAX_EMPTY_AFTER_DATA) break;
-          }
-          continue;
-        }
-
-        // mulai data realisasi
-        started = true;
-        emptyAfterData = 0;
-
-        // ---- forward-fill kebun & kode kebun ----
-        let kebunStr = String(kebunRaw ?? "").trim();
-        let kodeKebunStr = String(kodeKebunRaw ?? "").trim();
-
-        if (kebunStr) {
-          lastKebun = kebunStr;
-        } else if (lastKebun) {
-          kebunStr = lastKebun;
-        }
-
-        if (kodeKebunStr) {
-          lastKodeKebun = kodeKebunStr;
-        } else if (lastKodeKebun) {
-          kodeKebunStr = lastKodeKebun;
-        }
-
-        if (!kebunStr) kebunStr = "-";
-        if (!kodeKebunStr) kodeKebunStr = "-";
-
-        // ---- tanggal (pakai helper timezone Jakarta) ----
-        const parsedDate = toIsoDateJakarta(tanggalRaw ?? "");
-        let tanggalFinal: string | null | "-" = null;
-
-        if (!tanggalRaw || String(tanggalRaw).trim() === "") {
-          tanggalFinal = null; // tanggal kosong → null
-        } else if (parsedDate) {
-          tanggalFinal = parsedDate; // tanggal valid → "YYYY-MM-DD"
-        } else {
-          tanggalFinal = "-"; // ada isi tapi tak bisa diparse
-        }
-
-        const afdStr =
-          idxAfd >= 0 ? (String(row[idxAfd] ?? "").trim() || "-") : "-";
-
-        const ttStr =
-          idxTt >= 0 ? (String(row[idxTt] ?? "").trim() || "-") : "-";
-
-        const blokStr =
-          idxBlok >= 0
-            ? (String(row[idxBlok] ?? "").trim().toUpperCase() || "-")
-            : "-";
-
-        const jenisPupukStr =
-          idxJenisPupuk >= 0
-            ? (String(jenisPupukCell ?? "").trim() || "-")
-            : "-";
-
-        const invNum = toNumberLoose(invCell);
-        const luasNum = toNumberLoose(luasCell);
-
-        const aplikasiStr = String(aplikasiCell ?? "").trim();
-        const dosisStr = String(dosisCell ?? "").trim();
-        const kgPupukStr = String(kgPupukCell ?? "").trim();
-
-        let aplikasiNum = aplikasiStr ? toNumberLoose(aplikasiStr) : 0;
-        let dosisNum = dosisStr ? toNumberLoose(dosisStr) : 0;
-        let kgPupukNum = kgPupukStr ? toNumberLoose(kgPupukStr) : 0;
-
-        if (!Number.isFinite(aplikasiNum)) aplikasiNum = 0;
-        if (!Number.isFinite(dosisNum)) dosisNum = 0;
-        if (!Number.isFinite(kgPupukNum)) kgPupukNum = 0;
-
-        // kalau KG PUPUK kosong → hitung dari INV × DOSIS (mirip Rencana)
-        if (kgPupukNum === 0 && invNum > 0 && dosisNum > 0) {
-          kgPupukNum = invNum * dosisNum;
-        }
-
-        // filter: hanya baris yang benar-benar punya data realisasi
-        const hasRealData =
-          (tanggalFinal && tanggalFinal !== "-") ||
-          invNum > 0 ||
-          luasNum > 0 ||
-          (jenisPupukStr && jenisPupukStr !== "-") ||
-          aplikasiNum > 0 ||
-          dosisNum > 0 ||
-          kgPupukNum > 0;
-
-        if (!hasRealData) {
-          emptyAfterData++;
-          if (emptyAfterData >= MAX_EMPTY_AFTER_DATA) break;
-          continue;
-        }
-
-        emptyAfterData = 0;
-
-        payloads.push({
-          kategori: form.kategori,
-          kebun: kebunStr,
-          kode_kebun: kodeKebunStr,
-          tanggal: tanggalFinal,
-          afd: afdStr,
-          tt: ttStr,
-          blok: blokStr,
-          luas: luasNum,
-          inv: Math.round(invNum),
-          jenis_pupuk: jenisPupukStr,
-          // default ke 1 kalau kosong/0
-          aplikasi: aplikasiNum || 1,
-          dosis: dosisNum,
-          kg_pupuk: kgPupukNum,
-        });
-      }
-
-      if (!payloads.length) {
-        Swal.fire({
-          title: "Tidak ada data",
-          text: "Tidak ada baris valid pada tabel Realisasi yang dapat diimport.",
-          icon: "warning",
-          confirmButtonText: "OK",
-        });
-        return;
-      }
-
-      // === KIRIM BULK DALAM CHUNK (untuk >500 baris) ===
-      const CHUNK_SIZE = 500;
-      let totalInserted = 0;
-      let totalSent = 0;
-
-      for (let i = 0; i < payloads.length; i += CHUNK_SIZE) {
-        const chunk = payloads.slice(i, i + CHUNK_SIZE);
-        totalSent += chunk.length;
-
-        try {
-          const res = await fetch("/api/pemupukan/realisasi", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(chunk), // kirim array
-          });
-
-          if (!res.ok) {
-            console.error("Bulk import error status:", res.status);
-            continue;
-          }
-
-          const json = (await res.json().catch(
-            () => null as unknown
-          )) as { count?: number } | null;
-          const insertedFromApi = json?.count ?? 0;
-
-          totalInserted += insertedFromApi;
-        } catch (err) {
-          console.error("Bulk chunk error:", err);
-        }
-      }
-
-      const totalFailed = totalSent - totalInserted;
+      const inserted = json.count ?? 0;
+      const deleted = json.deleted ?? 0;
+      const parsed = json.totalParsed ?? 0;
+      const sheetName = json.sheetName ? ` (${json.sheetName})` : "";
 
       Swal.fire({
         title: "Import selesai",
-        html: `Berhasil import <b>${totalInserted}</b> baris dari tabel Realisasi.<br/>Gagal / terlewat <b>${totalFailed}</b> baris.`,
-        icon:
-          totalInserted > 0 && totalFailed === 0 ? "success" : "warning",
+        html: `Sheet${sheetName}<br/>Terbaca <b>${parsed}</b> baris, tersimpan <b>${inserted}</b> baris (replace).<br/>Duplikat terhapus <b>${deleted}</b> baris.`,
+        icon: inserted > 0 ? "success" : "warning",
         confirmButtonText: "OK",
       });
     } catch (err) {
       console.error(err);
       Swal.fire({
-        title: "Gagal membaca Excel",
-        text:
-          "Terjadi kesalahan saat membaca file Excel. Pastikan format file sudah benar.",
+        title: "Gagal import",
+        text: "Terjadi kesalahan saat upload/import di server.",
         icon: "error",
         confirmButtonText: "OK",
       });

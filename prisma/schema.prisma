@@ -15,11 +15,11 @@ enum KategoriTanaman {
 }
 
 model RencanaPemupukan {
-  id              Int              @id @default(autoincrement())
+  id              Int             @id @default(autoincrement())
   kategori        KategoriTanaman
   kebun           String
   kodeKebun       String
-  tanggal         DateTime?        @db.Date   // boleh null
+  tanggal         DateTime?       @db.Date // boleh null
   afd             String
   tt              String
   blok            String
@@ -30,26 +30,24 @@ model RencanaPemupukan {
   dosisKgPerPokok Float
   kgPupuk         Float
 
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // INDEXES
   // Untuk filter per kebun + tanggal (sudah ada, dipertahankan)
   @@index([kebun, tanggal], name: "idx_rencana_kebun_tanggal")
-
   // Untuk query yang sering pakai kodeKebun + afd + blok (mis. per afdeling / blok)
   @@index([kodeKebun, afd, blok], name: "idx_rencana_kodeKebun_afd_blok")
-
   // Untuk query range by tanggal (tanpa kebun), misalnya per bulan/tahun semua kebun
   @@index([tanggal], name: "idx_rencana_tanggal")
 }
 
 model RealisasiPemupukan {
-  id              Int              @id @default(autoincrement())
+  id              Int             @id @default(autoincrement())
   kategori        KategoriTanaman
   kebun           String
   kodeKebun       String
-  tanggal         DateTime?        @db.Date   // boleh null
+  tanggal         DateTime?       @db.Date // boleh null
   afd             String
   tt              String
   blok            String
@@ -60,8 +58,8 @@ model RealisasiPemupukan {
   dosisKgPerPokok Float
   kgPupuk         Float
 
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // INDEXES
   @@index([kebun, tanggal], name: "idx_realisasi_kebun_tanggal")
@@ -70,29 +68,19 @@ model RealisasiPemupukan {
 }
 
 model CurahHujanHarian {
-  /// Kode kebun, misal "TME", "TPU", dll
   kebunCode String
+  tanggal   DateTime @db.Date
 
-  /// Tanggal (harian, tanpa jam – disimpan sebagai 00:00)
-  tanggal   DateTime
+  // tetap string agar cocok dengan DB lama (TEXT)
+  sumber String @default("AWS")
 
-  /// Sumber data curah hujan: "AWS" atau "OMBROMETER"
-  /// Default "AWS" supaya data lama tetap terbaca.
-  sumber    String   @default("AWS")
-
-  /// Nama kebun (cache dari KEBUN_LABEL, biar gampang dipakai di laporan)
   kebunName String
-
-  /// Total curah hujan harian (mm) untuk kebun + tanggal + sumber ini
   totalMm   Float
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// Composite primary key → bisa pakai upsert([kebunCode, tanggal, sumber])
   @@id([kebunCode, tanggal, sumber])
-
-  @@index([tanggal])
-  @@index([kebunCode, tanggal, sumber], name: "idx_curah_kebun_tanggal")
-  @@index([sumber, tanggal], name: "idx_curah_sumber_tanggal")
+  @@index([kebunCode, sumber, tanggal], name: "idx_curah_kebun_sumber_tanggal")
+  @@index([sumber, tanggal, kebunCode], name: "idx_curah_sumber_tanggal_kebun")
 }

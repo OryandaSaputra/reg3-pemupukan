@@ -11,15 +11,22 @@ export async function middleware(req: NextRequest) {
   const isHome = pathname === "/";
   const isLoginPage = pathname === "/login";
   const isPemupukanRoute = pathname.startsWith("/pemupukan");
+  const isCurahHujanApi = pathname.startsWith("/api/curah-hujan");
 
-  // Ambil token session dari NextAuth (JWT di cookie)
-  // Menyertakan secret supaya konsisten dengan authOptions
   const token = await getToken({
     req,
     ...(NEXTAUTH_SECRET && { secret: NEXTAUTH_SECRET }),
   });
 
   const isAuthenticated = !!token;
+
+  // 0) Proteksi API: kalau belum login, balas 401 JSON (bukan redirect)
+  if (isCurahHujanApi && !isAuthenticated) {
+    return NextResponse.json(
+      { success: false, error: { code: "UNAUTHORIZED", message: "Unauthorized" } },
+      { status: 401 }
+    );
+  }
 
   // 1) Akses "/" → arahkan ke login atau dashboard
   if (isHome) {
@@ -30,7 +37,6 @@ export async function middleware(req: NextRequest) {
   // 2) Belum login tapi akses /pemupukan/* → paksa ke /login
   if (isPemupukanRoute && !isAuthenticated) {
     const loginUrl = new URL("/login", req.url);
-    // callbackUrl supaya habis login bisa balik ke halaman yang diminta
     loginUrl.searchParams.set("callbackUrl", pathname + search);
     return NextResponse.redirect(loginUrl);
   }
@@ -40,11 +46,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/pemupukan", req.url));
   }
 
-  // 4) Selain itu lanjut
   return NextResponse.next();
 }
 
 export const config = {
-  // Middleware hanya jalan di rute berikut, jadi lebih hemat
-  matcher: ["/", "/login", "/pemupukan/:path*"],
+  matcher: ["/", "/login", "/pemupukan/:path*", "/api/curah-hujan/:path*"],
 };

@@ -34,8 +34,8 @@ type ApiRealisasi = {
   aplikasiKe: number;
   dosisKgPerPokok: number;
   kgPupuk: number;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 type HistoryRow = {
@@ -71,25 +71,14 @@ const TABLE_HEADERS = [
   "Kg Pupuk",
 ] as const;
 
-const PAGE_SIZE = 500;
+// Tabel: kecilkan agar hemat transfer
+const PAGE_SIZE = 200;
 
-/* =================== CACHE UNTUK FETCH SEMUA REALISASI =================== */
+// Export: ambil bertahap per page (jangan fetch all sekali jalan)
+const EXPORT_PAGE_SIZE = 500;
+const EXPORT_MAX_PAGES = 200; // guard: max 100.000 rows (200 * 500)
 
-type RealisasiHistoryCacheEntry = {
-  data: HistoryRow[];
-  ts: number;
-};
-
-const REALISASI_HISTORY_CACHE_TTL = 60_000; // 60 detik
-let realisasiHistoryCache: RealisasiHistoryCacheEntry | null = null;
-
-/* =================== HELPER-HELPER =================== */
-
-function parseDateValue(s: string): number {
-  if (!s || s === "-") return 0;
-  const t = new Date(s).getTime();
-  return Number.isFinite(t) ? t : 0;
-}
+// ===================== HELPERS =====================
 
 function fmtNum(n: number | null | undefined) {
   if (n == null) return "-";
@@ -154,36 +143,132 @@ function historyRowsToSheetBody(rows: HistoryRow[]): (string | number)[][] {
   ]);
 }
 
-// GET semua realisasi (tanpa pagination) → dipakai untuk RIWAYAT & EXPORT
-async function fetchAllRealisasiForExport(): Promise<HistoryRow[]> {
-  const now = Date.now();
+// ===================== API FETCH HELPERS =====================
 
-  // 1) Coba pakai cache lokal terlebih dulu
-  if (
-    realisasiHistoryCache &&
-    now - realisasiHistoryCache.ts < REALISASI_HISTORY_CACHE_TTL
-  ) {
-    return realisasiHistoryCache.data;
+function buildRealisasiQuery(params: {
+  page: number;
+  pageSize: number;
+
+  // global filters
+  distrik?: string;
+  kebun?: string;
+  kategori?: string;
+  afd?: string;
+  tt?: string;
+  blok?: string;
+  jenis?: string;
+  aplikasi?: string | number;
+
+  // time & search
+  tahun?: string | number;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  search?: string;
+}) {
+  const sp = new URLSearchParams();
+  sp.set("page", String(params.page));
+  sp.set("pageSize", String(params.pageSize));
+
+  // global filters → server
+  if (params.distrik && params.distrik !== "all") sp.set("distrik", params.distrik);
+  if (params.kebun) sp.set("kebun", params.kebun);
+  if (params.kategori) sp.set("kategori", params.kategori);
+
+  if (params.afd && params.afd !== "all") sp.set("afd", params.afd);
+  if (params.tt && params.tt !== "all") sp.set("tt", params.tt);
+  if (params.blok && params.blok !== "all") sp.set("blok", params.blok);
+  if (params.jenis && params.jenis !== "all") sp.set("jenis", params.jenis);
+
+  if (params.aplikasi != null && String(params.aplikasi) !== "" && String(params.aplikasi) !== "all") {
+    sp.set("aplikasi", String(params.aplikasi));
   }
 
-  // 2) Kalau belum ada / kadaluarsa → fetch dari API seperti biasa
-  const res = await fetch("/api/pemupukan/realisasi", { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error("Gagal mengambil semua data realisasi");
-  }
+  // time & search
+  if (params.tahun) sp.set("tahun", String(params.tahun));
+  if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
+  if (params.dateTo) sp.set("dateTo", params.dateTo);
+  if (params.search && params.search.trim()) sp.set("search", params.search.trim());
 
-  const json = await res.json();
-  const dataArray: ApiRealisasi[] = Array.isArray(json) ? json : json.data;
-  const mapped = dataArray.map(mapApiToHistoryRow);
-
-  // simpan ke cache
-  realisasiHistoryCache = {
-    data: mapped,
-    ts: Date.now(),
-  };
-
-  return mapped;
+  return sp.toString();
 }
+
+async function fetchRealisasiPage(args: {
+  page: number;
+  pageSize: number;
+
+  // global filters
+  distrik?: string;
+  kebun?: string;
+  kategori?: string;
+  afd?: string;
+  tt?: string;
+  blok?: string;
+  jenis?: string;
+  aplikasi?: string | number;
+
+  // time & search
+  tahun?: string | number;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  search?: string;
+}) {
+  const qs = buildRealisasiQuery(args);
+  const res = await fetch(`/api/pemupukan/realisasi?${qs}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Gagal mengambil data realisasi");
+  const json = await res.json();
+
+  const dataArray: ApiRealisasi[] = Array.isArray(json) ? json : json.data;
+  const meta = Array.isArray(json) ? null : json.meta;
+
+  return {
+    rows: dataArray.map(mapApiToHistoryRow),
+    meta: meta as null | {
+      page: number;
+      pageSize: number;
+      total: number;
+      totalPages: number;
+    },
+  };
+}
+
+async function fetchRealisasiForExport(args: {
+  // global filters
+  distrik?: string;
+  kebun?: string;
+  kategori?: string;
+  afd?: string;
+  tt?: string;
+  blok?: string;
+  jenis?: string;
+  aplikasi?: string | number;
+
+  // time & search
+  tahun?: string | number;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  search?: string;
+}) {
+  const out: HistoryRow[] = [];
+
+  for (let page = 1; page <= EXPORT_MAX_PAGES; page++) {
+    const { rows, meta } = await fetchRealisasiPage({
+      page,
+      pageSize: EXPORT_PAGE_SIZE,
+      ...args,
+    });
+
+    out.push(...rows);
+
+    if (meta && page >= meta.totalPages) break;
+    if (!meta && rows.length === 0) break;
+  }
+
+  return out;
+}
+
+// ===================== COMPONENT =====================
 
 export default function RealisasiRiwayat() {
   const [rows, setRows] = useState<HistoryRow[]>([]);
@@ -203,6 +288,13 @@ export default function RealisasiRiwayat() {
     null
   );
 
+  const [serverMeta, setServerMeta] = useState<{
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  } | null>(null);
+
   // ====== FILTER GLOBAL DARI CONTEXT (FilterPanel) ======
   const {
     distrik,
@@ -220,33 +312,7 @@ export default function RealisasiRiwayat() {
 
   const [page, setPage] = useState(1);
 
-  // ============= LOAD SEMUA DATA SEKALI SAJA =============
-  useEffect(() => {
-    let active = true;
-
-    (async () => {
-      try {
-        setLoading(true);
-        const allRows = await fetchAllRealisasiForExport();
-        if (!active) return;
-
-        setRows(allRows);
-      } catch (err) {
-        console.error(err);
-        if (active) {
-          setRows([]);
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  // reset halaman ketika filter/search/global filter berubah
+  // reset halaman ketika query server berubah
   useEffect(() => {
     setPage(1);
   }, [
@@ -265,121 +331,65 @@ export default function RealisasiRiwayat() {
     dateTo,
   ]);
 
-  // opsi kebun dari SELURUH data
-  const kebunOptions = useMemo(() => {
-    const codes = Array.from(
-      new Set(
-        rows
-          .map((r) => r.kebun)
-          .filter((c): c is string => !!c && c.trim() !== "")
-      )
-    );
-    codes.sort();
-    return codes.map((code) => ({
-      code,
-      name: KEBUN_LABEL[code] ?? code,
-    }));
-  }, [rows]);
+  // ============= LOAD DATA PER HALAMAN (SERVER-SIDE) =============
+  useEffect(() => {
+    let active = true;
 
-  // filter global + kebun lokal + search + sort tanggal desc
-  const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
+    (async () => {
+      try {
+        setLoading(true);
 
-    let base = rows;
+        // kebun efektif: selectedKebun > globalKebun > (kosong = semua)
+        const effectiveKebun =
+          selectedKebun || (globalKebun !== "all" ? globalKebun : "");
 
-    // 1) filter distrik -> list kebun (DTM / DBR)
-    if (distrik !== "all") {
-      const allowedKebun =
-        distrik === "DTM" ? ORDER_DTM : distrik === "DBR" ? ORDER_DBR : [];
-      if (allowedKebun.length) {
-        base = base.filter((r) => allowedKebun.includes(r.kebun));
+        const effectiveKategori = kategori !== "all" ? kategori : "";
+
+        // tahun hanya dipakai jika tidak ada date range
+        const effectiveTahun =
+          !dateFrom && !dateTo && dataYear ? dataYear : "";
+
+        const { rows: pageRows, meta } = await fetchRealisasiPage({
+          page,
+          pageSize: PAGE_SIZE,
+
+          // global filters → server
+          distrik: distrik !== "all" ? distrik : undefined,
+          kebun: effectiveKebun || undefined,
+          kategori: effectiveKategori || undefined,
+          afd: afd !== "all" ? afd : undefined,
+          tt: tt !== "all" ? tt : undefined,
+          blok: blok !== "all" ? blok : undefined,
+          jenis: jenis !== "all" ? jenis : undefined,
+          aplikasi: aplikasi !== "all" ? aplikasi : undefined,
+
+          // time & search
+          tahun: effectiveTahun || undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          search: q || undefined,
+        });
+
+        if (!active) return;
+
+        setRows(pageRows);
+        setServerMeta(meta);
+      } catch (err) {
+        console.error(err);
+        if (active) {
+          setRows([]);
+          setServerMeta(null);
+        }
+      } finally {
+        if (active) setLoading(false);
       }
-    }
+    })();
 
-    // 2) filter kebun dari FilterPanel (global)
-    if (globalKebun !== "all") {
-      base = base.filter((r) => r.kebun === globalKebun);
-    }
-
-    // 3) kategori
-    if (kategori !== "all") {
-      base = base.filter((r) => r.kategori === kategori);
-    }
-
-    // 4) AFD / TT / Blok / Jenis Pupuk
-    if (afd !== "all") {
-      base = base.filter((r) => r.afd === afd);
-    }
-    if (tt !== "all") {
-      base = base.filter((r) => r.tt === tt);
-    }
-    if (blok !== "all") {
-      base = base.filter((r) => r.blok === blok);
-    }
-    if (jenis !== "all") {
-      base = base.filter((r) => r.jenisPupuk === jenis);
-    }
-
-    // 5) Aplikasi (global)
-    if (aplikasi !== "all") {
-      base = base.filter(
-        (r) => String(r.aplikasi ?? "") === String(aplikasi)
-      );
-    }
-
-    // 6) Tahun Data (global)
-    if (dataYear) {
-      base = base.filter(
-        (r) =>
-          r.tanggal !== "-" &&
-          !!r.tanggal &&
-          r.tanggal.startsWith(String(dataYear))
-      );
-    }
-
-    // 7) Range tanggal global
-    if (dateFrom || dateTo) {
-      const fromVal = dateFrom ? parseDateValue(dateFrom) : 0;
-      const toVal = dateTo ? parseDateValue(dateTo) : Number.POSITIVE_INFINITY;
-
-      base = base.filter((r) => {
-        const t = parseDateValue(r.tanggal);
-        if (dateFrom && t < fromVal) return false;
-        if (dateTo && t > toVal) return false;
-        return true;
-      });
-    }
-
-    // 8) FILTER KHUSUS HALAMAN (dropdown "Filter / Pilih kebun…")
-    if (selectedKebun) {
-      base = base.filter((r) => r.kebun === selectedKebun);
-    }
-
-    // 9) FILTER TEKS (search bar)
-    if (term) {
-      base = base.filter((r) => {
-        const keb = KEBUN_LABEL[r.kebun] ?? r.kebun ?? "";
-        return [
-          r.kategori,
-          keb,
-          r.kodeKebun ?? "",
-          r.afd ?? "",
-          r.tt ?? "",
-          r.blok ?? "",
-          r.jenisPupuk ?? "",
-          r.tanggal ?? "",
-        ]
-          .map((v) => String(v).toLowerCase())
-          .some((v) => v.includes(term));
-      });
-    }
-
-    // sort terbaru di atas
-    return [...base].sort(
-      (a, b) => parseDateValue(b.tanggal) - parseDateValue(a.tanggal)
-    );
+    return () => {
+      active = false;
+    };
   }, [
-    rows,
+    page,
     q,
     selectedKebun,
     distrik,
@@ -395,21 +405,31 @@ export default function RealisasiRiwayat() {
     dateTo,
   ]);
 
-  // ====== PAGINATION (per 500 data) ======
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)),
-    [filtered.length]
-  );
+  // opsi kebun (jangan ambil dari rows karena rows cuma 1 page)
+  const kebunOptions = useMemo(() => {
+    return Object.keys(KEBUN_LABEL)
+      .sort()
+      .map((code) => ({
+        code,
+        name: KEBUN_LABEL[code] ?? code,
+      }));
+  }, []);
 
+  // Filter client-only: distrik + afd/tt/blok/jenis/aplikasi
+  const filtered = useMemo(() => {
+    return rows;
+  }, [rows]);
+
+  // Pagination server
+  const totalPages = serverMeta?.totalPages ?? 1;
   const currentPage = Math.min(page, totalPages);
-  const pageStartIndex = (currentPage - 1) * PAGE_SIZE;
-  const pageRows = filtered.slice(pageStartIndex, pageStartIndex + PAGE_SIZE);
+  const pageRows = filtered;
 
-  const showingFrom = filtered.length === 0 ? 0 : pageStartIndex + 1;
-  const showingTo =
-    filtered.length === 0 ? 0 : pageStartIndex + pageRows.length;
+  const total = serverMeta?.total ?? 0;
+  const showingFrom = total > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0;
+  const showingTo = total > 0 ? showingFrom - 1 + pageRows.length : 0;
 
-  // virtualizer: hanya untuk baris yang sudah ter-filter & ter-paginate
+  // virtualizer
   const rowVirtualizer = useVirtualizer({
     count: pageRows.length,
     getScrollElement: () => scrollParentRef.current,
@@ -464,9 +484,9 @@ export default function RealisasiRiwayat() {
         return;
       }
 
-      setRows((prev) => prev.filter((r) => r.id !== row.id));
-      // invalidasi cache lokal agar export berikutnya ambil data terbaru
-      realisasiHistoryCache = null;
+      // server source-of-truth
+      router.refresh();
+      setPage(1);
 
       await Swal.fire({
         title: "Berhasil",
@@ -486,7 +506,7 @@ export default function RealisasiRiwayat() {
   };
 
   const handleDeleteAll = async () => {
-    if (rows.length === 0) return;
+    if (total === 0) return;
 
     const result = await Swal.fire({
       title: "Hapus semua data realisasi?",
@@ -524,10 +544,10 @@ export default function RealisasiRiwayat() {
         return;
       }
 
-      setRows([]);
       setQ("");
       setSelectedKebun("");
-      realisasiHistoryCache = null;
+      router.refresh();
+      setPage(1);
 
       await Swal.fire({
         title: "Berhasil",
@@ -600,9 +620,9 @@ export default function RealisasiRiwayat() {
       const json = await res.json().catch(() => null);
       const deletedCount = json?.deletedCount ?? 0;
 
-      setRows((prev) => prev.filter((r) => r.kebun !== selectedKebun));
       setSelectedKebun("");
-      realisasiHistoryCache = null;
+      router.refresh();
+      setPage(1);
 
       await Swal.fire({
         title: "Berhasil",
@@ -635,14 +655,70 @@ export default function RealisasiRiwayat() {
     setExportCurrentKebun(null);
   };
 
-  // ===== EXPORT (pakai fetchAllRealisasiForExport yang sama) =====
+  const getExportKebunTargets = (): string[] | null => {
+    if (selectedKebun) return [selectedKebun];
+    if (globalKebun !== "all") return [globalKebun];
+    if (distrik === "DTM") return ORDER_DTM;
+    if (distrik === "DBR") return ORDER_DBR;
+    return null; // semua kebun
+  };
+
+  // ===== EXPORT =====
 
   const handleExportExcelAll = async () => {
     try {
       setExporting(true);
       setExportMessage("Export Excel (Semua Kebun)…");
 
-      const allRows = await fetchAllRealisasiForExport();
+      const effectiveKategori = kategori !== "all" ? kategori : "";
+      const effectiveTahun = !dateFrom && !dateTo && dataYear ? dataYear : "";
+
+      const kebunTargets = getExportKebunTargets();
+
+      let allRows: HistoryRow[] = [];
+
+      if (kebunTargets && kebunTargets.length > 0) {
+        setExportTotalGroups(kebunTargets.length);
+        for (let i = 0; i < kebunTargets.length; i++) {
+          const k = kebunTargets[i];
+          setExportProcessedGroups(i);
+          setExportCurrentKebun(k);
+          await new Promise((r) => setTimeout(r, 0));
+
+          const rowsK = await fetchRealisasiForExport({
+            kebun: k,
+            kategori: effectiveKategori || undefined,
+            tahun: effectiveTahun || undefined,
+            dateFrom: dateFrom || undefined,
+            dateTo: dateTo || undefined,
+            search: q || undefined,
+            distrik: distrik !== "all" ? distrik : undefined,
+            afd: afd !== "all" ? afd : undefined,
+            tt: tt !== "all" ? tt : undefined,
+            blok: blok !== "all" ? blok : undefined,
+            jenis: jenis !== "all" ? jenis : undefined,
+            aplikasi: aplikasi !== "all" ? aplikasi : undefined,
+          });
+
+          allRows.push(...rowsK);
+        }
+        setExportProcessedGroups(kebunTargets.length);
+      } else {
+        allRows = await fetchRealisasiForExport({
+          kebun: undefined,
+          kategori: effectiveKategori || undefined,
+          tahun: effectiveTahun || undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          search: q || undefined,
+          distrik: distrik !== "all" ? distrik : undefined,
+          afd: afd !== "all" ? afd : undefined,
+          tt: tt !== "all" ? tt : undefined,
+          blok: blok !== "all" ? blok : undefined,
+          jenis: jenis !== "all" ? jenis : undefined,
+          aplikasi: aplikasi !== "all" ? aplikasi : undefined,
+        });
+      }
 
       if (allRows.length === 0) {
         await Swal.fire({
@@ -667,29 +743,45 @@ export default function RealisasiRiwayat() {
         ([, kebunRows]) => kebunRows.length > 0
       );
 
-      setExportTotalGroups(kebunEntries.length);
-      setExportProcessedGroups(0);
+      // Kalau mode semua kebun, overlay progress berdasarkan group hasil
+      if (!kebunTargets) {
+        setExportTotalGroups(kebunEntries.length);
+        setExportProcessedGroups(0);
 
-      for (let i = 0; i < kebunEntries.length; i++) {
-        const [kebunCode, kebunRows] = kebunEntries[i];
+        for (let i = 0; i < kebunEntries.length; i++) {
+          const [kebunCode, kebunRows] = kebunEntries[i];
+          setExportCurrentKebun(kebunCode);
+          setExportProcessedGroups(i);
+          await new Promise((resolve) => setTimeout(resolve, 0));
 
-        setExportCurrentKebun(kebunCode);
-        setExportProcessedGroups(i);
-        await new Promise((resolve) => setTimeout(resolve, 0));
+          const kebunLabel = KEBUN_LABEL[kebunCode] ?? kebunCode;
+          const sheetName = makeSheetName(kebunLabel);
 
-        const kebunLabel = KEBUN_LABEL[kebunCode] ?? kebunCode;
-        const sheetName = makeSheetName(kebunLabel);
+          const sheetData = [
+            [...TABLE_HEADERS],
+            ...historyRowsToSheetBody(kebunRows),
+          ];
 
-        const sheetData = [
-          [...TABLE_HEADERS],
-          ...historyRowsToSheetBody(kebunRows),
-        ];
+          const ws = XLSX.utils.aoa_to_sheet(sheetData);
+          XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+        }
 
-        const ws = XLSX.utils.aoa_to_sheet(sheetData);
-        XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+        setExportProcessedGroups(kebunEntries.length);
+      } else {
+        // Mode kebunTargets: cukup append sheet semua group tanpa progress ulang
+        for (const [kebunCode, kebunRows] of kebunEntries) {
+          const kebunLabel = KEBUN_LABEL[kebunCode] ?? kebunCode;
+          const sheetName = makeSheetName(kebunLabel);
+
+          const sheetData = [
+            [...TABLE_HEADERS],
+            ...historyRowsToSheetBody(kebunRows),
+          ];
+
+          const ws = XLSX.utils.aoa_to_sheet(sheetData);
+          XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+        }
       }
-
-      setExportProcessedGroups(kebunEntries.length);
 
       XLSX.writeFile(workbook, "Realisasi_Pemupukan_Semua_Kebun.xlsx");
     } catch (err) {
@@ -723,8 +815,23 @@ export default function RealisasiRiwayat() {
       setExportProcessedGroups(0);
       setExportCurrentKebun(selectedKebun);
 
-      const allRows = await fetchAllRealisasiForExport();
-      const kebunRows = allRows.filter((r) => r.kebun === selectedKebun);
+      const effectiveKategori = kategori !== "all" ? kategori : "";
+      const effectiveTahun = !dateFrom && !dateTo && dataYear ? dataYear : "";
+
+      const kebunRows = await fetchRealisasiForExport({
+        kebun: selectedKebun,
+        kategori: effectiveKategori || undefined,
+        tahun: effectiveTahun || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        search: q || undefined,
+        distrik: distrik !== "all" ? distrik : undefined,
+        afd: afd !== "all" ? afd : undefined,
+        tt: tt !== "all" ? tt : undefined,
+        blok: blok !== "all" ? blok : undefined,
+        jenis: jenis !== "all" ? jenis : undefined,
+        aplikasi: aplikasi !== "all" ? aplikasi : undefined,
+      });
 
       if (kebunRows.length === 0) {
         await Swal.fire({
@@ -774,7 +881,55 @@ export default function RealisasiRiwayat() {
       setExporting(true);
       setExportMessage("Export PDF (Semua Kebun)…");
 
-      const allRows = await fetchAllRealisasiForExport();
+      const effectiveKategori = kategori !== "all" ? kategori : "";
+      const effectiveTahun = !dateFrom && !dateTo && dataYear ? dataYear : "";
+
+      const kebunTargets = getExportKebunTargets();
+
+      let allRows: HistoryRow[] = [];
+
+      if (kebunTargets && kebunTargets.length > 0) {
+        setExportTotalGroups(kebunTargets.length);
+        for (let i = 0; i < kebunTargets.length; i++) {
+          const k = kebunTargets[i];
+          setExportProcessedGroups(i);
+          setExportCurrentKebun(k);
+          await new Promise((r) => setTimeout(r, 0));
+
+          const rowsK = await fetchRealisasiForExport({
+            kebun: k,
+            kategori: effectiveKategori || undefined,
+            tahun: effectiveTahun || undefined,
+            dateFrom: dateFrom || undefined,
+            dateTo: dateTo || undefined,
+            search: q || undefined,
+            distrik: distrik !== "all" ? distrik : undefined,
+            afd: afd !== "all" ? afd : undefined,
+            tt: tt !== "all" ? tt : undefined,
+            blok: blok !== "all" ? blok : undefined,
+            jenis: jenis !== "all" ? jenis : undefined,
+            aplikasi: aplikasi !== "all" ? aplikasi : undefined,
+          });
+
+          allRows.push(...rowsK);
+        }
+        setExportProcessedGroups(kebunTargets.length);
+      } else {
+        allRows = await fetchRealisasiForExport({
+          kebun: undefined,
+          kategori: effectiveKategori || undefined,
+          tahun: effectiveTahun || undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          search: q || undefined,
+          distrik: distrik !== "all" ? distrik : undefined,
+          afd: afd !== "all" ? afd : undefined,
+          tt: tt !== "all" ? tt : undefined,
+          blok: blok !== "all" ? blok : undefined,
+          jenis: jenis !== "all" ? jenis : undefined,
+          aplikasi: aplikasi !== "all" ? aplikasi : undefined,
+        });
+      }
 
       if (allRows.length === 0) {
         await Swal.fire({
@@ -789,7 +944,6 @@ export default function RealisasiRiwayat() {
       const jsPDFmod = await import("jspdf");
       const autoTable = (await import("jspdf-autotable")).default;
 
-      // ❗ PAKAI OVERLOAD POSISIONAL (orientation, unit, format, compressPdf)
       const doc = new jsPDFmod.jsPDF("landscape", "pt", "a4", true);
 
       const grouped: Record<string, HistoryRow[]> = {};
@@ -802,19 +956,21 @@ export default function RealisasiRiwayat() {
         ([, kebunRows]) => kebunRows.length > 0
       );
 
-      setExportTotalGroups(kebunEntries.length);
-      setExportProcessedGroups(0);
+      if (!kebunTargets) {
+        setExportTotalGroups(kebunEntries.length);
+        setExportProcessedGroups(0);
+      }
 
       for (let i = 0; i < kebunEntries.length; i++) {
         const [kebunCode, kebunRows] = kebunEntries[i];
 
-        setExportCurrentKebun(kebunCode);
-        setExportProcessedGroups(i);
-        await new Promise((resolve) => setTimeout(resolve, 0));
-
-        if (i > 0) {
-          doc.addPage("landscape");
+        if (!kebunTargets) {
+          setExportCurrentKebun(kebunCode);
+          setExportProcessedGroups(i);
+          await new Promise((resolve) => setTimeout(resolve, 0));
         }
+
+        if (i > 0) doc.addPage("landscape");
 
         const kebunLabel = KEBUN_LABEL[kebunCode] ?? kebunCode;
         doc.setFontSize(10);
@@ -844,16 +1000,15 @@ export default function RealisasiRiwayat() {
           startY: 24,
           head: [TABLE_HEADERS as unknown as string[]],
           body,
-          styles: { fontSize: 6 }, // kecil → lebih irit ukuran
+          styles: { fontSize: 6 },
           headStyles: { fillColor: [226, 232, 240] },
           margin: { left: 10, right: 10 },
         });
       }
 
-      setExportProcessedGroups(kebunEntries.length);
+      if (!kebunTargets) setExportProcessedGroups(kebunEntries.length);
 
-      // ✅ BATAS MAKS 1 MB
-      const MAX_BYTES = 1024 * 1024; // 1 MB
+      const MAX_BYTES = 1024 * 1024;
       const blob = doc.output("blob") as Blob;
 
       if (blob.size > MAX_BYTES) {
@@ -861,14 +1016,14 @@ export default function RealisasiRiwayat() {
         await Swal.fire({
           title: "File terlalu besar",
           html: `
-          Ukuran file PDF hasil export adalah <b>${sizeKb} KB</b>, melebihi batas 1 MB.<br/>
-          Gunakan filter (tahun, kebun, tanggal, kategori, dll) terlebih dahulu<br/>
-          atau gunakan export Excel bila butuh seluruh data lengkap.
-        `,
+            Ukuran file PDF hasil export adalah <b>${sizeKb} KB</b>, melebihi batas 1 MB.<br/>
+            Gunakan filter (tahun, kebun, tanggal, kategori, dll) terlebih dahulu<br/>
+            atau gunakan export Excel bila butuh seluruh data lengkap.
+          `,
           icon: "warning",
           confirmButtonText: "OK",
         });
-        return; // ❌ jangan simpan file jika > 1 MB
+        return;
       }
 
       doc.save("Realisasi_Pemupukan_Semua_Kebun.pdf");
@@ -903,8 +1058,23 @@ export default function RealisasiRiwayat() {
       setExportProcessedGroups(0);
       setExportCurrentKebun(selectedKebun);
 
-      const allRows = await fetchAllRealisasiForExport();
-      const kebunRows = allRows.filter((r) => r.kebun === selectedKebun);
+      const effectiveKategori = kategori !== "all" ? kategori : "";
+      const effectiveTahun = !dateFrom && !dateTo && dataYear ? dataYear : "";
+
+      const kebunRows = await fetchRealisasiForExport({
+        kebun: selectedKebun,
+        kategori: effectiveKategori || undefined,
+        tahun: effectiveTahun || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        search: q || undefined,
+        distrik: distrik !== "all" ? distrik : undefined,
+        afd: afd !== "all" ? afd : undefined,
+        tt: tt !== "all" ? tt : undefined,
+        blok: blok !== "all" ? blok : undefined,
+        jenis: jenis !== "all" ? jenis : undefined,
+        aplikasi: aplikasi !== "all" ? aplikasi : undefined,
+      });
 
       if (kebunRows.length === 0) {
         await Swal.fire({
@@ -921,7 +1091,6 @@ export default function RealisasiRiwayat() {
       const jsPDFmod = await import("jspdf");
       const autoTable = (await import("jspdf-autotable")).default;
 
-      // ❗ Sama: pakai overload positional + compressPdf = true
       const doc = new jsPDFmod.jsPDF("landscape", "pt", "a4", true);
 
       const kebunLabel = KEBUN_LABEL[selectedKebun] ?? selectedKebun;
@@ -959,7 +1128,6 @@ export default function RealisasiRiwayat() {
 
       setExportProcessedGroups(1);
 
-      // ✅ BATAS MAKS 1 MB
       const MAX_BYTES = 1024 * 1024;
       const blob = doc.output("blob") as Blob;
 
@@ -968,10 +1136,10 @@ export default function RealisasiRiwayat() {
         await Swal.fire({
           title: "File terlalu besar",
           html: `
-          Ukuran file PDF hasil export adalah <b>${sizeKb} KB</b>, melebihi batas 1 MB.<br/>
-          Coba perkecil rentang data (filter tahun, tanggal, kategori, dsb)<br/>
-          sebelum melakukan export PDF per kebun.
-        `,
+            Ukuran file PDF hasil export adalah <b>${sizeKb} KB</b>, melebihi batas 1 MB.<br/>
+            Coba perkecil rentang data (filter tahun, tanggal, kategori, dsb)<br/>
+            sebelum melakukan export PDF per kebun.
+          `,
           icon: "warning",
           confirmButtonText: "OK",
         });
@@ -1003,11 +1171,8 @@ export default function RealisasiRiwayat() {
       ? `${KEBUN_LABEL[exportCurrentKebun] ?? exportCurrentKebun} (${exportCurrentKebun})`
       : "-";
 
-  const total = rows.length;
-
   return (
     <>
-      {/* OVERLAY EXPORT FULL-SCREEN */}
       {exporting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="bg-white dark:bg-slate-900 rounded-lg shadow-xl px-4 py-3 w-[320px] space-y-3 border border-emerald-200 dark:border-emerald-700">
@@ -1072,7 +1237,7 @@ export default function RealisasiRiwayat() {
                 <button
                   type="button"
                   onClick={handleExportExcelAll}
-                  disabled={loading || total === 0 || exporting}
+                  disabled={loading || (serverMeta?.total ?? 0) === 0 || exporting}
                   className="px-3 py-1.5 rounded-md text-[11px] bg-white/30 backdrop-blur-md border border-white/20 shadow-sm hover:bg-white/40 transition disabled:opacity-50 text-emerald-900"
                 >
                   Export Excel (Semua Kebun)
@@ -1091,7 +1256,7 @@ export default function RealisasiRiwayat() {
                 <button
                   type="button"
                   onClick={handleExportPdfAll}
-                  disabled={loading || total === 0 || exporting}
+                  disabled={loading || (serverMeta?.total ?? 0) === 0 || exporting}
                   className="px-3 py-1.5 rounded-md text-[11px] bg-white/30 backdrop-blur-md border border-white/20 shadow-sm hover:bg-white/40 transition disabled:opacity-50 text-sky-900"
                 >
                   Export PDF (Semua Kebun)
@@ -1109,7 +1274,7 @@ export default function RealisasiRiwayat() {
               <button
                 type="button"
                 onClick={handleDeleteAll}
-                disabled={total === 0 || loading || exporting}
+                disabled={(serverMeta?.total ?? 0) === 0 || loading || exporting}
                 className="px-3 py-1.5 rounded-md text-[11px] bg-white/30 backdrop-blur-md border border-white/20 shadow-sm hover:bg-red-50/80 text-red-700 disabled:opacity-50"
               >
                 Hapus Semua Data
@@ -1123,7 +1288,7 @@ export default function RealisasiRiwayat() {
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Cari kategori (TM/TBM/BIBITAN) / kebun / AFD / blok / jenis pupuk / tanggal…"
+                  placeholder="Cari kategori (TM/TBM/BIBITAN) / kebun / AFD / blok / jenis pupuk"
                   className="h-9 glass-input text-[11px]"
                 />
               </div>
@@ -1157,13 +1322,11 @@ export default function RealisasiRiwayat() {
               </div>
             </div>
 
-            {/* Tabel + virtual scroll (per halaman) */}
             <div
               ref={scrollParentRef}
               className="overflow-x-auto glass-panel rounded-xl max-h-[520px] border border-white/10"
             >
               <table className="min-w-full text-xs">
-                {/* === HEADER YANG SUDAH DIPERTEBAL & SOLID === */}
                 <thead className="sticky top-0 z-10 bg-white/90 dark:bg-slate-900/95 backdrop-blur-md text-slate-800 dark:text-slate-100 border-b border-white/20">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">
@@ -1272,7 +1435,7 @@ export default function RealisasiRiwayat() {
                     </tr>
                   )}
 
-                  {!loading && filtered.length === 0 && (
+                  {!loading && pageRows.length === 0 && (
                     <tr>
                       <td
                         colSpan={14}
@@ -1297,19 +1460,16 @@ export default function RealisasiRiwayat() {
               </table>
             </div>
 
-            {/* Info ringkas + pagination */}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-100/90">
               <span>
-                {filtered.length === 0 ? (
-                  <>Menampilkan 0 data dari total {total} data</>
+                {total === 0 ? (
+                  <>Menampilkan 0 data</>
                 ) : (
                   <>
-                    Menampilkan {showingFrom}–{showingTo} dari{" "}
-                    {filtered.length} data tersaring (dari total {total} data
+                    Menampilkan {showingFrom}–{showingTo} dari total {total} data
                     {selectedKebun && (
                       <> &nbsp; | filter kebun: {selectedKebun}</>
                     )}
-                    )
                   </>
                 )}
               </span>
@@ -1318,21 +1478,19 @@ export default function RealisasiRiwayat() {
                 <button
                   type="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1 || filtered.length === 0}
+                  disabled={currentPage === 1 || total === 0}
                   className="px-2 py-1 rounded-md border border-white/20 bg-white/20 backdrop-blur-md text-[11px] disabled:opacity-40 hover:bg-white/40 dark:hover:bg-white/10"
                 >
                   Sebelumnya
                 </button>
                 <span className="text-[11px]">
-                  Halaman {filtered.length === 0 ? 0 : currentPage} dari{" "}
-                  {filtered.length === 0 ? 0 : totalPages}
+                  Halaman {total === 0 ? 0 : currentPage} dari{" "}
+                  {total === 0 ? 0 : totalPages}
                 </span>
                 <button
                   type="button"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={
-                    currentPage === totalPages || filtered.length === 0
-                  }
+                  disabled={currentPage === totalPages || total === 0}
                   className="px-2 py-1 rounded-md border border-white/20 bg-white/20 backdrop-blur-md text-[11px] disabled:opacity-40 hover:bg-white/40 dark:hover:bg-white/10"
                 >
                   Berikutnya

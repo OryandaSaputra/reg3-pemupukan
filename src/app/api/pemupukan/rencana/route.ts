@@ -8,6 +8,7 @@ import { parseTanggalIsoJakarta } from "@/app/pemupukan/_services/dateHelpers";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth.config";
 import { unstable_cache, revalidateTag } from "next/cache";
+import * as XLSX from "xlsx";
 
 const MAX_ROWS_PER_UPLOAD = 10_000;
 
@@ -32,10 +33,9 @@ function safeNumber(value: unknown, fallback: number = 0): number {
  */
 function parseDateOnly(value: string | null): Date | null {
   if (!value) return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  d.setHours(0, 0, 0, 0);
-  return d;
+  // WIB date-only (00:00 WIB)
+  const d = parseTanggalIsoJakarta(value);
+  return d ?? null;
 }
 
 /**
@@ -337,6 +337,268 @@ export async function GET(req: Request) {
   }
 }
 
+type Cell = string | number | Date | null | undefined;
+
+function toNumberLoose(v: Cell): number {
+  if (v === null || v === undefined || v === "") return 0;
+  if (v instanceof Date) return 0;
+  const n = Number(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function computeKg(inv: number, dosis: number): number {
+  const kg = inv * dosis;
+  return Number.isFinite(kg) ? kg : 0;
+}
+
+const normalize = (s: string) =>
+  String(s ?? "")
+    .normalize("NFKD")
+    .replace(/\s+/g, "")
+    .replace(/[^A-Z0-9]/gi, "")
+    .toUpperCase();
+
+function parseExcelRencanaRows(args: {
+  workbook: XLSX.WorkBook;
+  kategori: string; // TM/TBM/BIBITAN
+  sheetName: string;
+}): { rows: IncomingRencanaRow[]; totalParsed: number } | { error: string } {
+  const { workbook, kategori, sheetName } = args;
+
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) return { error: `Sheet "${sheetName}" tidak ditemukan.` };
+
+  const grid = XLSX.utils.sheet_to_json<Cell[]>(sheet, {
+    header: 1,
+    defval: "",
+    raw: true,
+  });
+
+  if (!grid.length) return { error: "Sheet Excel tidak memiliki data." };
+
+  // Cari header & boundary kolom TANGGAL (jika sheet gabung rencana+realisasi)
+  let headerRowIndex = -1;
+  let headerNorm: string[] = [];
+  let idxTanggalBoundary = -1;
+
+  const maxScan = Math.min(grid.length, 20);
+
+  for (let r = 0; r < maxScan; r++) {
+    const norm = (grid[r] ?? []).map((h) => normalize(String(h ?? "")));
+    const tIndex = norm.findIndex((c) => c === "TANGGAL" || c === "TGL");
+    if (tIndex !== -1) {
+      headerRowIndex = r;
+      headerNorm = norm;
+      idxTanggalBoundary = tIndex;
+      break;
+    }
+  }
+
+  // fallback: cari header rencana walau tidak ada kolom TANGGAL
+  if (headerRowIndex === -1) {
+    const targetHeaders = [
+      "KEBUN",
+      "KODE KEBUN",
+      "AFD",
+      "TT",
+      "BLOK",
+      "LUAS",
+      "INV",
+      "JENIS PUPUK",
+      "APLIKASI",
+      "DOSIS",
+      "KG PUPUK",
+    ].map(normalize);
+
+    for (let r = 0; r < maxScan; r++) {
+      const norm = (grid[r] ?? []).map((h) => normalize(String(h ?? "")));
+      const matchCount = norm.filter((col) => targetHeaders.includes(col)).length;
+      if (matchCount >= 4) {
+        headerRowIndex = r;
+        headerNorm = norm;
+        break;
+      }
+    }
+  }
+
+  if (headerRowIndex === -1) {
+    return { error: "Header Rencana tidak ditemukan. Pastikan format sheet sesuai." };
+  }
+
+  const findIdxLeft = (...candidates: string[]) => {
+    const candNorms = candidates.map(normalize);
+    const end = idxTanggalBoundary === -1 ? headerNorm.length : idxTanggalBoundary;
+    for (let i = 0; i < end; i++) {
+      if (candNorms.includes(headerNorm[i])) return i;
+    }
+    return -1;
+  };
+
+  const findIdxFallback = (...candidates: string[]) => {
+    const candNorms = candidates.map(normalize);
+    return headerNorm.findIndex((col) => candNorms.includes(col));
+  };
+
+  const finder = idxTanggalBoundary === -1 ? findIdxFallback : findIdxLeft;
+
+  const idxKebun = finder("KEBUN");
+  const idxKodeKebun = finder("KODEKEBUN", "KODE_KEBUN", "KODE KEBUN");
+  const idxTanggal = finder("TANGGAL", "TGL"); // opsional
+  const idxAfd = finder("AFD", "AFDELING");
+  const idxTt = finder("TT", "TAHUNTANAM", "THNTANAM", "TAHUN TANAM");
+  const idxBlok = finder("BLOK");
+  const idxLuas = finder("LUAS", "LUASHA", "LUAS (HA)");
+  const idxInv = finder("INV", "POKOK", "JUMLAHPOKOK", "JUMLAH POKOK");
+  const idxJenisPupuk = finder("JENISPUPUK", "JENIS PUPUK", "PUPUK");
+  const idxAplikasi = finder("APLIKASI", "APLIKASIKE", "APLIKASI (KE-)");
+  const idxDosis = finder("DOSIS", "DOSISKGPOKOK", "DOSIS (KG/POKOK)");
+  const idxKgPupuk = finder(
+    "KGPUPUK",
+    "KGPUPUKTOTAL",
+    "KGPUKUP",
+    "KG PUPUK",
+    "KG PUPUK (TOTAL)"
+  );
+
+  const requiredIdx = [
+    idxKebun,
+    idxKodeKebun,
+    idxAfd,
+    idxTt,
+    idxBlok,
+    idxLuas,
+    idxInv,
+    idxJenisPupuk,
+    idxAplikasi,
+    idxDosis,
+    idxKgPupuk,
+  ];
+
+  if (requiredIdx.some((i) => i === -1)) {
+    return { error: "Header Rencana tidak lengkap. Pastikan kolom wajib tersedia." };
+  }
+
+  const payloads: IncomingRencanaRow[] = [];
+
+  // forward-fill kebun & kode kebun (karena merge)
+  let lastKebun = "";
+  let lastKodeKebun = "";
+
+  let started = false;
+  let emptyAfterData = 0;
+  const MAX_EMPTY_AFTER_DATA = 5;
+
+  for (let i = headerRowIndex + 1; i < grid.length; i++) {
+    const row = grid[i];
+    if (!row || row.length === 0) {
+      if (started) {
+        emptyAfterData++;
+        if (emptyAfterData >= MAX_EMPTY_AFTER_DATA) break;
+      }
+      continue;
+    }
+
+    const kebunRaw = row[idxKebun];
+    const kodeKebunRaw = row[idxKodeKebun];
+    const tanggalRaw = idxTanggal >= 0 ? row[idxTanggal] : "";
+
+    const luasCell = idxLuas >= 0 ? row[idxLuas] : "";
+    const invCell = row[idxInv];
+
+    const jenisPupukCell = idxJenisPupuk >= 0 ? row[idxJenisPupuk] : "";
+    const aplikasiCell = idxAplikasi >= 0 ? row[idxAplikasi] : "";
+    const dosisCell = idxDosis >= 0 ? row[idxDosis] : "";
+    const kgPupukCell = idxKgPupuk >= 0 ? row[idxKgPupuk] : "";
+
+    const isRowEmpty =
+      String(kebunRaw ?? "").trim() === "" &&
+      String(kodeKebunRaw ?? "").trim() === "" &&
+      String(tanggalRaw ?? "").trim() === "" &&
+      String(luasCell ?? "").trim() === "" &&
+      String(invCell ?? "").trim() === "" &&
+      String(jenisPupukCell ?? "").trim() === "" &&
+      String(aplikasiCell ?? "").trim() === "" &&
+      String(dosisCell ?? "").trim() === "" &&
+      String(kgPupukCell ?? "").trim() === "";
+
+    if (isRowEmpty) {
+      if (started) {
+        emptyAfterData++;
+        if (emptyAfterData >= MAX_EMPTY_AFTER_DATA) break;
+      }
+      continue;
+    }
+
+    started = true;
+    emptyAfterData = 0;
+
+    // forward-fill kebun & kode kebun
+    let kebunStr = String(kebunRaw ?? "").trim();
+    let kodeKebunStr = String(kodeKebunRaw ?? "").trim();
+
+    if (kebunStr) lastKebun = kebunStr;
+    else if (lastKebun) kebunStr = lastKebun;
+
+    if (kodeKebunStr) lastKodeKebun = kodeKebunStr;
+    else if (lastKodeKebun) kodeKebunStr = lastKodeKebun;
+
+    if (!kebunStr) kebunStr = "-";
+    if (!kodeKebunStr) kodeKebunStr = "-";
+
+    const afdStr = String(row[idxAfd] ?? "").trim() || "-";
+    const ttStr = String(row[idxTt] ?? "").trim() || "-";
+    const blokStr = (String(row[idxBlok] ?? "").trim().toUpperCase() || "-").toString();
+    const jenisPupukStr = String(jenisPupukCell ?? "").trim() || "-";
+
+    const invNum = Math.round(toNumberLoose(invCell));
+    const luasNum = toNumberLoose(luasCell);
+
+    const aplikasiNum = Math.round(toNumberLoose(aplikasiCell) || 1);
+    const dosisNum = toNumberLoose(dosisCell);
+    let kgPupukNum = toNumberLoose(kgPupukCell);
+
+    // kalau KG PUPUK kosong → hitung INV * DOSIS
+    if (kgPupukNum === 0 && invNum > 0 && dosisNum > 0) {
+      kgPupukNum = computeKg(invNum, dosisNum);
+    }
+
+    const hasPlanData =
+      (tanggalRaw != null && String(tanggalRaw).trim() !== "") ||
+      invNum > 0 ||
+      luasNum > 0 ||
+      (jenisPupukStr && jenisPupukStr !== "-") ||
+      aplikasiNum > 0 ||
+      dosisNum > 0 ||
+      kgPupukNum > 0;
+
+    if (!hasPlanData) {
+      emptyAfterData++;
+      if (emptyAfterData >= MAX_EMPTY_AFTER_DATA) break;
+      continue;
+    }
+
+    payloads.push({
+      kategori,
+      kebun: kebunStr,
+      kode_kebun: kodeKebunStr,
+      // IMPORTANT: jangan diubah ke ISO di server parsing ini,
+      // biarkan raw (string/number/Date) → parseTanggalIsoJakarta yang handle WIB
+      tanggal: (tanggalRaw as Cell) ?? null,
+      afd: afdStr,
+      tt: ttStr,
+      blok: blokStr,
+      luas: luasNum,
+      inv: invNum,
+      jenis_pupuk: jenisPupukStr,
+      aplikasi: aplikasiNum,
+      dosis: dosisNum,
+      kg_pupuk: kgPupukNum,
+    });
+  }
+
+  return { rows: payloads, totalParsed: payloads.length };
+}
+
 /* ======================================================================= */
 /*                                  POST                                   */
 /* ======================================================================= */
@@ -348,11 +610,151 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await req.json()) as IncomingRencanaRow | IncomingRencanaRow[];
+    const contentType = req.headers.get("content-type") || "";
 
+    // =========================
+    // 1) MODE IMPORT EXCEL (multipart/form-data)
+    // =========================
+    if (contentType.includes("multipart/form-data")) {
+      const fd = await req.formData();
+
+      const file = fd.get("file");
+      const kategori = String(fd.get("kategori") ?? "")
+        .trim()
+        .toUpperCase();
+      const sheetNameRaw = fd.get("sheetName");
+      const sheetName = sheetNameRaw ? String(sheetNameRaw) : "";
+
+      if (!file || !(file instanceof File)) {
+        return NextResponse.json(
+          { message: "File tidak ditemukan pada form-data (field: file)." },
+          { status: 400 }
+        );
+      }
+
+      if (kategori !== "TM" && kategori !== "TBM" && kategori !== "BIBITAN") {
+        return NextResponse.json(
+          { message: "Kategori tidak valid. Gunakan TM/TBM/BIBITAN." },
+          { status: 400 }
+        );
+      }
+
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+
+      const sheetNames = workbook.SheetNames ?? [];
+      if (!sheetNames.length) {
+        return NextResponse.json(
+          { message: "Workbook tidak memiliki sheet." },
+          { status: 400 }
+        );
+      }
+
+      // kalau belum pilih sheet dan sheet > 1 → minta pilih sheet (409)
+      if (!sheetName && sheetNames.length > 1) {
+        return NextResponse.json(
+          {
+            message: "Pilih sheet terlebih dahulu.",
+            sheetNames,
+          },
+          { status: 409 }
+        );
+      }
+
+      const finalSheetName = sheetName || sheetNames[0];
+
+      const parsed = parseExcelRencanaRows({
+        workbook,
+        kategori,
+        sheetName: finalSheetName,
+      });
+
+      if ("error" in parsed) {
+        return NextResponse.json(
+          { message: parsed.error },
+          { status: 400 }
+        );
+      }
+
+      const rowsArray = parsed.rows;
+
+      if (rowsArray.length > MAX_ROWS_PER_UPLOAD) {
+        return NextResponse.json(
+          {
+            message: `Maksimal ${MAX_ROWS_PER_UPLOAD} baris per upload. Silakan pecah file menjadi beberapa bagian.`,
+          },
+          { status: 413 }
+        );
+      }
+
+      const normalized: NormalizedRencanaRow[] = [];
+      const errors: string[] = [];
+
+      rowsArray.forEach((row, idx) => {
+        const mapped = mapIncomingRow(row);
+        if (!mapped.ok) {
+          errors.push(`Row ${idx + 1}: ${mapped.error}`);
+        } else {
+          normalized.push(mapped.data);
+        }
+      });
+
+      if (errors.length) {
+        return NextResponse.json(
+          { message: "Beberapa baris tidak valid.", errors },
+          { status: 400 }
+        );
+      }
+
+      if (!normalized.length) {
+        return NextResponse.json(
+          { message: "Tidak ada data valid untuk disimpan." },
+          { status: 400 }
+        );
+      }
+
+      // === REPLACE LOGIC ===
+      const keyConditions: Prisma.RencanaPemupukanWhereInput[] = normalized.map(
+        (row) => ({
+          kategori: row.kategori,
+          kebun: row.kebun,
+          kodeKebun: row.kodeKebun,
+          afd: row.afd,
+          tt: row.tt,
+          blok: row.blok,
+          jenisPupuk: row.jenisPupuk,
+          aplikasiKe: row.aplikasiKe,
+          ...(row.tanggal ? { tanggal: row.tanggal } : {}),
+        })
+      );
+
+      const [deleteResult, createResult] = await prisma.$transaction([
+        prisma.rencanaPemupukan.deleteMany({ where: { OR: keyConditions } }),
+        prisma.rencanaPemupukan.createMany({ data: normalized }),
+      ]);
+
+      revalidateTag("pemupukan:rencana");
+      revalidateTag("pemupukan:meta");
+      revalidateTag("pemupukan:log-aktivitas");
+
+      return NextResponse.json(
+        {
+          message: "Import rencana berhasil (replace).",
+          sheetName: finalSheetName,
+          totalParsed: parsed.totalParsed,
+          count: createResult.count,
+          deleted: deleteResult.count,
+        },
+        { status: 201 }
+      );
+    }
+
+    // =========================
+    // 2) MODE JSON (manual submit / bulk JSON lama)
+    // =========================
+    const body = (await req.json()) as IncomingRencanaRow | IncomingRencanaRow[];
     const rowsArray = Array.isArray(body) ? body : [body];
 
-    // Batas jumlah baris per upload
     if (rowsArray.length > MAX_ROWS_PER_UPLOAD) {
       return NextResponse.json(
         {
@@ -388,7 +790,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // === REPLACE LOGIC: hapus dulu data lama dengan key yang sama ===
     const keyConditions: Prisma.RencanaPemupukanWhereInput[] = normalized.map(
       (row) => ({
         kategori: row.kategori,
@@ -404,15 +805,10 @@ export async function POST(req: Request) {
     );
 
     const [deleteResult, createResult] = await prisma.$transaction([
-      prisma.rencanaPemupukan.deleteMany({
-        where: { OR: keyConditions },
-      }),
-      prisma.rencanaPemupukan.createMany({
-        data: normalized,
-      }),
+      prisma.rencanaPemupukan.deleteMany({ where: { OR: keyConditions } }),
+      prisma.rencanaPemupukan.createMany({ data: normalized }),
     ]);
 
-    // Invalidate cache yang terkait rencana + meta + log aktivitas
     revalidateTag("pemupukan:rencana");
     revalidateTag("pemupukan:meta");
     revalidateTag("pemupukan:log-aktivitas");

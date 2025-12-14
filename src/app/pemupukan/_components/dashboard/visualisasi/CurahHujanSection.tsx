@@ -203,6 +203,55 @@ const glassSwal = Swal.mixin({
 });
 
 // ========================================================================
+type ApiErrorPayload = {
+  message?: string;
+};
+
+type ApiWrappedResponse<T> =
+  | { success: true; data: T }
+  | { success: false; error?: ApiErrorPayload };
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+function isWrappedResponse<T>(v: unknown): v is ApiWrappedResponse<T> {
+  return isRecord(v) && "success" in v;
+}
+
+function unwrapApiData<T>(json: unknown): T {
+  if (isWrappedResponse<T>(json)) {
+    if (json.success) return json.data;
+    throw new Error(json.error?.message ?? "Request gagal");
+  }
+  return json as T;
+}
+
+async function readJsonSafe(res: Response): Promise<unknown> {
+  const txt = await res.text();
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return { message: txt };
+  }
+}
+
+function extractErrorMessage(payload: unknown, fallback: string): string {
+  if (typeof payload === "string" && payload.trim()) return payload;
+
+  if (isRecord(payload)) {
+    const msg = payload["message"];
+    if (typeof msg === "string" && msg.trim()) return msg;
+
+    const err = payload["error"];
+    if (isRecord(err)) {
+      const em = err["message"];
+      if (typeof em === "string" && em.trim()) return em;
+    }
+  }
+
+  return fallback;
+}
 
 export default function CurahHujanSection() {
   // Tanggal harian (untuk bar daily) → default: hari ini di Asia/Jakarta
@@ -275,35 +324,47 @@ export default function CurahHujanSection() {
           );
           return;
         }
-        const json = (await res.json()) as {
-          kebunCode: string;
-          kebunName: string;
-          dailyMm: number;
-          mtdMm: number;
-        }[];
-
-        // Map hasil API per kebunCode
-        const apiMap = new Map<
-          string,
+        const raw = await readJsonSafe(res);
+        const rows = unwrapApiData<
           {
-            kebunCode: string;
-            kebunName: string;
-            dailyMm: number;
-            mtdMm: number;
-          }
-        >();
-        for (const row of json) {
-          apiMap.set(row.kebunCode, {
-            kebunCode: row.kebunCode,
-            kebunName: row.kebunName,
-            dailyMm: row.dailyMm ?? 0,
-            mtdMm: row.mtdMm ?? 0,
-          });
+            kebunCode?: string | null;
+            kebunName?: string | null;
+            dailyMm?: number | string | null;
+            mtdMm?: number | string | null;
+          }[]
+        >(raw);
+
+        // Map hasil API (fallback: kebunName kalau kebunCode kosong / tidak match)
+        const apiMap = new Map<string, RainChartItem>();
+
+        for (const row of rows) {
+          const code = String(row.kebunCode ?? "")
+            .trim()
+            .toUpperCase();
+
+          const name = String(row.kebunName ?? "").trim();
+
+          const item: RainChartItem = {
+            kebunCode: code || "", // boleh kosong, tetap simpan
+            kebunName: name,
+            dailyMm: Number(row.dailyMm ?? 0) || 0,
+            mtdMm: Number(row.mtdMm ?? 0) || 0,
+          };
+
+          // prefer key by code
+          if (code) apiMap.set(code, item);
+
+          // also index by name for safety (case-insensitive)
+          if (name) apiMap.set(name.toUpperCase(), item);
         }
 
         // Merge dengan seluruh kebunOptions
         const merged: RainChartItem[] = kebunOptions.map((k) => {
-          const found = apiMap.get(k.code);
+          const codeKey = String(k.code).trim().toUpperCase();
+          const nameKey = String(k.name).trim().toUpperCase();
+
+          const found = apiMap.get(codeKey) ?? apiMap.get(nameKey);
+
           return {
             kebunCode: k.code,
             kebunName: k.name,
@@ -442,8 +503,8 @@ export default function CurahHujanSection() {
                   if (leftTitle) {
                     leftTitle.textContent =
                       idx === 0
-                        ? "Curah Hujan Per Kebun - AWS"
-                        : "Curah Hujan Per Kebun - Ombrometer";
+                        ? "Curah Hujan Per Kebun - AWS (mm)"
+                        : "Curah Hujan Per Kebun - Ombrometer (mm)";
                     leftTitle.style.color = "#111827";
                     leftTitle.style.fontSize = "13px";
                     leftTitle.style.fontWeight = "700";
@@ -773,19 +834,47 @@ export default function CurahHujanSection() {
         }
 
         // Map ke struktur yang dikirim ke backend
-        const payloadRows: { Datetime: string; Rainfall: string | number }[] =
-          [];
+        type PayloadRow = { Datetime: string | number; Rainfall: string | number };
+        const payloadRows: PayloadRow[] = [];
+
+        function toDatetimePayload(v: unknown): string | number | null {
+          if (v === null || v === undefined) return null;
+
+          // Jika Excel mengirim serial date number, konversi ke ISO string
+          if (typeof v === "number" && Number.isFinite(v)) {
+            const dc = XLSX.SSF.parse_date_code(v);
+            if (dc && dc.y && dc.m && dc.d) {
+              const jsDate = new Date(
+                Date.UTC(
+                  dc.y,
+                  dc.m - 1,
+                  dc.d,
+                  dc.H ?? 0,
+                  dc.M ?? 0,
+                  Math.floor(dc.S ?? 0)
+                )
+              );
+              return jsDate.toISOString();
+            }
+            // fallback: kirim angka mentah
+            return v;
+          }
+
+          const s = String(v).trim();
+          if (!s) return null;
+          return s;
+        }
 
         for (const row of dataRows) {
           const cells = row as (string | number)[];
           const dt = cells[idxDatetime];
           const rf = cells[idxRainfall];
 
-          const dtStr = String(dt ?? "").trim();
-          if (!dtStr) continue; // skip baris kosong
+          const dtVal = toDatetimePayload(dt);
+          if (dtVal === null) continue;
 
           payloadRows.push({
-            Datetime: dtStr,
+            Datetime: dtVal,
             Rainfall: (rf as string | number) ?? "",
           });
         }
@@ -805,7 +894,7 @@ export default function CurahHujanSection() {
 
         // ===================[ KIRIM DALAM BATCH 500 BARIS ]===================
         const totalRawRows = payloadRows.length;
-        let totalDaysAggregated = 0;
+        const allDays = new Set<string>(); // ✅ gabungkan hari unik dari semua batch
         let batchIndex = 0;
 
         for (let i = 0; i < totalRawRows; i += CHUNK_SIZE) {
@@ -824,51 +913,52 @@ export default function CurahHujanSection() {
 
           if (!res.ok) {
             const txt = await res.text();
-            let msg =
-              "Gagal menyimpan data curah hujan. Cek format file atau hubungi admin.";
-            try {
-              const parsed = JSON.parse(txt) as { message?: string };
-              if (parsed?.message) msg = parsed.message;
-            } catch {
-              // abaikan parse error
-            }
+            let msg = "Gagal menyimpan data curah hujan. Cek format file atau hubungi admin.";
+            let parsed: unknown = txt;
+            try { parsed = JSON.parse(txt); } catch { }
 
-            console.error(
-              "Import curah hujan gagal (batch %d): %s",
-              batchIndex,
-              txt
-            );
+            msg = extractErrorMessage(parsed, msg);
+
             await glassSwal.fire({
               icon: "error",
               title: "Import gagal",
               html: `
-                <div class="text-xs text-slate-200">
-                  Import gagal pada batch ke-${batchIndex}.<br/>
-                  Pesan: ${msg}
-                </div>
-              `,
+        <div class="text-xs text-slate-200">
+          Import gagal pada batch ke-${batchIndex}.<br/>
+          Pesan: ${msg}
+        </div>
+      `,
             });
             return;
           }
 
-          const json = (await res.json()) as { count?: number };
-          totalDaysAggregated += json.count ?? 0;
+          const raw = await readJsonSafe(res);
+          const data = unwrapApiData<{ count?: number; countDays?: number; days?: string[] }>(raw);
+
+          // ✅ Wajib: backend kirim days[] (YYYY-MM-DD) agar bisa union antar batch
+          if (Array.isArray(data.days)) {
+            for (const d of data.days) {
+              if (typeof d === "string" && d.trim()) allDays.add(d);
+            }
+          } else {
+            // fallback untuk kompatibilitas (backend belum update) -> hasilnya tidak akurat
+            const days = data.countDays ?? data.count ?? 0;
+            for (let x = 0; x < days; x += 1) allDays.add(`__legacy_${batchIndex}_${x}`);
+          }
         }
 
         await glassSwal.fire({
           icon: "success",
           title: "Import berhasil",
           html: `
-            <div class="text-xs text-slate-200">
-              Berhasil mengakumulasikan <b>${totalDaysAggregated}</b> hari curah hujan<br/>
-              dari <b>${totalRawRows}</b> baris data untuk kebun
-              <b>${KEBUN_LABEL[selectedKebun] ?? selectedKebun}</b>.<br/>
-              Sumber: <b>${importSource}</b><br/>
-              Data dikirim dalam <b>${Math.ceil(
-            totalRawRows / CHUNK_SIZE
-          )}</b> batch (maks ${CHUNK_SIZE} baris per batch).
-            </div>
-          `,
+    <div class="text-xs text-slate-200">
+      Berhasil mengakumulasikan <b>${allDays.size}</b> hari curah hujan<br/>
+      dari <b>${totalRawRows}</b> baris data untuk kebun
+      <b>${KEBUN_LABEL[selectedKebun] ?? selectedKebun}</b>.<br/>
+      Sumber: <b>${importSource}</b><br/>
+      Data dikirim dalam <b>${Math.ceil(totalRawRows / CHUNK_SIZE)}</b> batch (maks ${CHUNK_SIZE} baris per batch).
+    </div>
+  `,
           confirmButtonText: "OK",
         });
 
@@ -963,12 +1053,13 @@ export default function CurahHujanSection() {
         if (!res.ok) {
           const txt = await res.text();
           let msg = "Gagal mengubah data curah hujan.";
+          let parsed: unknown = txt;
           try {
-            const parsed = JSON.parse(txt) as { message?: string };
-            if (parsed?.message) msg = parsed.message;
-          } catch {
-            // ignore
-          }
+            parsed = JSON.parse(txt);
+          } catch { }
+
+          msg = extractErrorMessage(parsed, "Gagal mengubah data curah hujan.");
+
 
           await glassSwal.fire({
             icon: "error",
@@ -1166,12 +1257,12 @@ export default function CurahHujanSection() {
           if (!res.ok) {
             const txt = await res.text();
             let msg = "Gagal menghapus data curah hujan.";
+            let parsed: unknown = txt;
             try {
-              const parsed = JSON.parse(txt) as { message?: string };
-              if (parsed?.message) msg = parsed.message;
-            } catch {
-              // ignore
-            }
+              parsed = JSON.parse(txt);
+            } catch { }
+
+            msg = extractErrorMessage(parsed, "Gagal menghapus data curah hujan.");
 
             await glassSwal.fire({
               icon: "error",
@@ -1252,12 +1343,12 @@ export default function CurahHujanSection() {
           if (!res.ok) {
             const txt = await res.text();
             let msg = "Gagal menghapus semua data curah hujan.";
+            let parsed: unknown = txt;
             try {
-              const parsed = JSON.parse(txt) as { message?: string };
-              if (parsed?.message) msg = parsed.message;
-            } catch {
-              // ignore
-            }
+              parsed = JSON.parse(txt);
+            } catch { }
+
+            msg = extractErrorMessage(parsed, "Gagal menghapus semua data curah hujan.");
 
             await glassSwal.fire({
               icon: "error",
@@ -1451,7 +1542,7 @@ export default function CurahHujanSection() {
             >
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-emerald-200">
-                  Curah Hujan per Kebun – AWS
+                  Curah Hujan per Kebun – AWS (mm)
                 </span>
                 <span className="text-[10px] text-slate-400">
                   Harian {dailyDate} • Total {rangeStart} s/d {rangeEnd}
@@ -1555,7 +1646,7 @@ export default function CurahHujanSection() {
             >
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-emerald-200">
-                  Curah Hujan per Kebun – Ombrometer
+                  Curah Hujan per Kebun – Ombrometer (mm)
                 </span>
                 <span className="text-[10px] text-slate-400">
                   Harian {dailyDate} • Total {rangeStart} s/d {rangeEnd}
@@ -1587,7 +1678,7 @@ export default function CurahHujanSection() {
                       allowDecimals={false}
                       tick={{ fontSize: 11, fill: "#E5E7EB" }}
                       label={{
-                        value: "Curah hujan (mm)",
+                        value: "",
                         angle: -90,
                         position: "insideLeft",
                         offset: 0,
