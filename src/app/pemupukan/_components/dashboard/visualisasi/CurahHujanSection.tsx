@@ -1405,103 +1405,57 @@ export default function CurahHujanSection() {
           subtitle="Grafik atas menampilkan data AWS, grafik bawah menampilkan data Ombrometer. Data diambil dari hasil import Excel per kebun."
         >
           {/* CONTROL BAR */}
-          <div
-            className="
-              mb-3
-              flex flex-col gap-2
-              lg:flex-row lg:flex-wrap lg:items-center lg:justify-end
-              text-xs
-            "
-          >
-            {/* Tanggal harian */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="whitespace-nowrap text-[11px] text-slate-300">
-                Tanggal harian:
-              </span>
-              <Input
-                type="date"
-                value={dailyDate}
-                onChange={(e) => setDailyDate(e.target.value)}
-                className="h-8 w-[140px] border-emerald-500/40 bg-slate-950/40 text-xs"
-              />
-            </div>
-
-            {/* Range untuk TOTAL */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="whitespace-nowrap text-[11px] text-slate-300">
-                Periode total:
-              </span>
-              <div className="flex items-center gap-1">
-                <Input
-                  type="date"
-                  value={rangeStart}
-                  onChange={(e) => setRangeStart(e.target.value)}
-                  className="h-8 w-[130px] border-emerald-500/40 bg-slate-950/40 text-xs"
-                />
-                <span className="text-[11px] text-slate-400">s/d</span>
-                <Input
-                  type="date"
-                  value={rangeEnd}
-                  onChange={(e) => setRangeEnd(e.target.value)}
-                  className="h-8 w-[130px] border-emerald-500/40 bg-slate-950/40 text-xs"
-                />
+          <div className="mb-3 space-y-2 text-xs">
+            {/* BARIS 1 — OPERASIONAL (KEBUN → SUMBER → IMPORT → EXPORT) */}
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {/* Kebun */}
+              <div className="flex items-center gap-2">
+                <span className="whitespace-nowrap text-[11px] text-slate-300">
+                  Kebun
+                </span>
+                <Select value={selectedKebun} onValueChange={(v) => setSelectedKebun(v)}>
+                  <SelectTrigger className="h-8 w-[220px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
+                    <SelectValue placeholder="Pilih kebun" />
+                  </SelectTrigger>
+                  <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
+                    {kebunOptions.map((k) => (
+                      <SelectItem key={k.code} value={k.code}>
+                        {k.code} — {k.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
 
-            {/* Pilih kebun untuk import */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="whitespace-nowrap text-[11px] text-slate-300">
-                Kebun import:
-              </span>
-              <Select
-                value={selectedKebun}
-                onValueChange={(v) => setSelectedKebun(v)}
-              >
-                <SelectTrigger className="h-8 w-[170px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
-                  <SelectValue placeholder="Pilih kebun" />
-                </SelectTrigger>
+              {/* Sumber */}
+              <div className="flex items-center gap-2">
+                <span className="whitespace-nowrap text-[11px] text-slate-300">
+                  Sumber
+                </span>
+                <Select
+                  value={importSource}
+                  onValueChange={(v) => setImportSource(v as RainSource)}
+                >
+                  <SelectTrigger className="h-8 w-[160px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
+                    <SelectItem value="AWS">AWS</SelectItem>
+                    <SelectItem value="OMBROMETER">Ombrometer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
-                  {kebunOptions.map((k) => (
-                    <SelectItem key={k.code} value={k.code}>
-                      {k.code} — {k.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleImportExcel}
+              />
 
-            {/* Pilih sumber untuk import */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="whitespace-nowrap text-[11px] text-slate-300">
-                Sumber import:
-              </span>
-              <Select
-                value={importSource}
-                onValueChange={(v) =>
-                  setImportSource(v as RainSource)
-                }
-              >
-                <SelectTrigger className="h-8 w-[160px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
-                  <SelectItem value="AWS">AWS</SelectItem>
-                  <SelectItem value="OMBROMETER">Ombrometer</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Input file (hidden) + tombol Import & Export */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={handleImportExcel}
-            />
-
-            <div className="flex flex-wrap items-center gap-2">
+              {/* Tombol */}
               <Button
                 type="button"
                 size="sm"
@@ -1518,14 +1472,51 @@ export default function CurahHujanSection() {
                 size="sm"
                 variant="outline"
                 onClick={handleExportPdf}
-                disabled={
-                  loadingChart ||
-                  (!chartDataAws.length && !chartDataOmbro.length)
-                }
+                disabled={loadingChart || (!chartDataAws.length && !chartDataOmbro.length)}
                 className="h-8 px-3 text-[11px]"
               >
-                Export PDF (2 Grafik)
+                Export PDF
               </Button>
+            </div>
+
+            {/* BARIS 2 — FILTER TANGGAL */}
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-12 lg:items-center">
+              {/* Curah Hujan Harian */}
+              <div className="lg:col-span-4">
+                <div className="flex items-center gap-2">
+                  <span className="whitespace-nowrap text-[11px] text-slate-300">
+                    Curah Hujan Harian:
+                  </span>
+                  <Input
+                    type="date"
+                    value={dailyDate}
+                    onChange={(e) => setDailyDate(e.target.value)}
+                    className="h-8 w-[160px] border-emerald-500/40 bg-slate-950/40 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Curah Hujan Total (range) */}
+              <div className="lg:col-span-8">
+                <div className="flex items-center justify-end gap-2">
+                  <span className="whitespace-nowrap text-[11px] text-slate-300">
+                    Curah Hujan Total (range):
+                  </span>
+                  <Input
+                    type="date"
+                    value={rangeStart}
+                    onChange={(e) => setRangeStart(e.target.value)}
+                    className="h-8 w-[160px] border-emerald-500/40 bg-slate-950/40 text-xs"
+                  />
+                  <span className="text-[11px] text-slate-400">s/d</span>
+                  <Input
+                    type="date"
+                    value={rangeEnd}
+                    onChange={(e) => setRangeEnd(e.target.value)}
+                    className="h-8 w-[160px] border-emerald-500/40 bg-slate-950/40 text-xs"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
