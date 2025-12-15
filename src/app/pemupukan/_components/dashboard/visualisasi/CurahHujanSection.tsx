@@ -276,6 +276,7 @@ export default function CurahHujanSection() {
 
   const [loadingChart, setLoadingChart] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -429,6 +430,9 @@ export default function CurahHujanSection() {
  *            semua teks jadi hitam, legend disembunyikan (PDF saja)
  */
   const handleExportPdf = useCallback(async () => {
+    // ✅ kalau sedang export, cegah double klik
+    if (exportingPdf) return;
+
     if (!pdfWrapperRef.current) {
       await glassSwal.fire({
         icon: "info",
@@ -443,6 +447,8 @@ export default function CurahHujanSection() {
     }
 
     try {
+      setExportingPdf(true); // ✅ NEW (spinner ON)
+
       const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
         import("html2canvas"),
         import("jspdf"),
@@ -459,7 +465,6 @@ export default function CurahHujanSection() {
             ) as HTMLDivElement | null;
 
             if (wrapper) {
-              // Card besar (A + B)
               wrapper.style.backgroundColor = "#FFFFFF";
               wrapper.style.padding = "22px";
               wrapper.style.boxSizing = "border-box";
@@ -484,7 +489,6 @@ export default function CurahHujanSection() {
                 el.style.marginBottom =
                   idx === chartContainers.length - 1 ? "0" : "18px";
 
-                // Header atas chart
                 const headerRow = el.querySelector<HTMLDivElement>(
                   "div.mb-1.flex.items-center.justify-between"
                 );
@@ -494,7 +498,6 @@ export default function CurahHujanSection() {
                   headerRow.style.paddingBottom = "6px";
                   headerRow.style.borderBottom = "1px solid #E5E7EB";
 
-                  // Judul kiri
                   const leftTitle =
                     headerRow.querySelector<HTMLSpanElement>(
                       "span.text-\\[11px\\].font-semibold"
@@ -510,7 +513,6 @@ export default function CurahHujanSection() {
                     leftTitle.style.fontWeight = "700";
                   }
 
-                  // HAPUS tulisan kanan ("Total ...") karena tidak dibutuhkan
                   const rightMeta =
                     headerRow.querySelector<HTMLSpanElement>(
                       "span.text-\\[10px\\]"
@@ -521,7 +523,6 @@ export default function CurahHujanSection() {
                   }
                 }
 
-                // Hapus legend (PDF saja)
                 const legends = el.querySelectorAll<HTMLElement>(
                   ".recharts-legend-wrapper"
                 );
@@ -533,11 +534,8 @@ export default function CurahHujanSection() {
                 });
               });
 
-              // Paksa warna teks hitam via <style> internal di clone (PDF saja)
-              // Ini penting karena banyak label Recharts pakai fill/opacity bawaan.
               const forceStyle = doc.createElement("style");
               forceStyle.textContent = `
-              /* Semua teks di dalam SVG Recharts */
               #curah-hujan-pdf-wrapper svg text,
               #curah-hujan-pdf-wrapper svg tspan {
                 fill: #111827 !important;
@@ -545,7 +543,6 @@ export default function CurahHujanSection() {
                 opacity: 1 !important;
               }
 
-              /* Tick / label spesifik Recharts */
               #curah-hujan-pdf-wrapper .recharts-text,
               #curah-hujan-pdf-wrapper .recharts-cartesian-axis-tick-value,
               #curah-hujan-pdf-wrapper .recharts-label,
@@ -559,14 +556,10 @@ export default function CurahHujanSection() {
               doc.head.appendChild(forceStyle);
             }
 
-            // Hapus semua stylesheet (tailwind/next) supaya html2canvas tidak error lab/oklab/oklch
             const styleNodes = doc.querySelectorAll(
               "style:not([data-keep-pdf='1']), link[rel='stylesheet']"
             );
             styleNodes.forEach((node) => {
-              // NOTE: kita biarkan <style> forceStyle yang baru disisipkan
-              // Cara aman: jangan hapus style yang isinya kita butuh.
-              // Karena selector di atas dapat ikut ngehapus, jadi kita skip yang ada id? -> kita pakai pengecekan konten:
               if (node.tagName.toLowerCase() === "style") {
                 const s = node as HTMLStyleElement;
                 const txt = s.textContent || "";
@@ -576,7 +569,6 @@ export default function CurahHujanSection() {
               if (parent) parent.removeChild(node);
             });
 
-            // Force via attribute juga (untuk kasus inline fill abu2 + tspan)
             const wrapper2 = doc.getElementById("curah-hujan-pdf-wrapper");
             if (wrapper2) {
               const texts = wrapper2.querySelectorAll<SVGTextElement>("svg text");
@@ -587,7 +579,8 @@ export default function CurahHujanSection() {
                 t.style.opacity = "1";
               });
 
-              const tspans = wrapper2.querySelectorAll<SVGTSpanElement>("svg tspan");
+              const tspans =
+                wrapper2.querySelectorAll<SVGTSpanElement>("svg tspan");
               tspans.forEach((ts) => {
                 ts.setAttribute("fill", "#111827");
                 ts.setAttribute("opacity", "1");
@@ -602,7 +595,7 @@ export default function CurahHujanSection() {
       });
 
       const pageTitle = "Curah Hujan per Kebun (AWS & Ombrometer)";
-      const pageSubtitle = `Harian ${dailyDate || "-"} • Total ${rangeStart || "-"
+      const pageSubtitle = `Curah Hujan Harian ${dailyDate || "-"} | Curah Hujan Total (range) ${rangeStart || "-"
         } s/d ${rangeEnd || "-"}`;
       const fileName = `curah-hujan-aws-ombro-${dailyDate || "periode"}.pdf`;
 
@@ -665,11 +658,10 @@ export default function CurahHujanSection() {
         </div>
       `,
       });
+    } finally {
+      setExportingPdf(false); // ✅ NEW (spinner OFF, apapun hasilnya)
     }
-  }, [dailyDate, rangeStart, rangeEnd]);
-
-
-
+  }, [dailyDate, rangeStart, rangeEnd, exportingPdf]);
 
   /**
    * Import Excel
@@ -1405,103 +1397,57 @@ export default function CurahHujanSection() {
           subtitle="Grafik atas menampilkan data AWS, grafik bawah menampilkan data Ombrometer. Data diambil dari hasil import Excel per kebun."
         >
           {/* CONTROL BAR */}
-          <div
-            className="
-              mb-3
-              flex flex-col gap-2
-              lg:flex-row lg:flex-wrap lg:items-center lg:justify-end
-              text-xs
-            "
-          >
-            {/* Tanggal harian */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="whitespace-nowrap text-[11px] text-slate-300">
-                Tanggal harian:
-              </span>
-              <Input
-                type="date"
-                value={dailyDate}
-                onChange={(e) => setDailyDate(e.target.value)}
-                className="h-8 w-[140px] border-emerald-500/40 bg-slate-950/40 text-xs"
-              />
-            </div>
-
-            {/* Range untuk TOTAL */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="whitespace-nowrap text-[11px] text-slate-300">
-                Periode total:
-              </span>
-              <div className="flex items-center gap-1">
-                <Input
-                  type="date"
-                  value={rangeStart}
-                  onChange={(e) => setRangeStart(e.target.value)}
-                  className="h-8 w-[130px] border-emerald-500/40 bg-slate-950/40 text-xs"
-                />
-                <span className="text-[11px] text-slate-400">s/d</span>
-                <Input
-                  type="date"
-                  value={rangeEnd}
-                  onChange={(e) => setRangeEnd(e.target.value)}
-                  className="h-8 w-[130px] border-emerald-500/40 bg-slate-950/40 text-xs"
-                />
+          <div className="mb-3 space-y-2 text-xs">
+            {/* BARIS 1 — OPERASIONAL (KEBUN → SUMBER → IMPORT → EXPORT) */}
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {/* Kebun */}
+              <div className="flex items-center gap-2">
+                <span className="whitespace-nowrap text-[11px] text-slate-300">
+                  Kebun
+                </span>
+                <Select value={selectedKebun} onValueChange={(v) => setSelectedKebun(v)}>
+                  <SelectTrigger className="h-8 w-[220px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
+                    <SelectValue placeholder="Pilih kebun" />
+                  </SelectTrigger>
+                  <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
+                    {kebunOptions.map((k) => (
+                      <SelectItem key={k.code} value={k.code}>
+                        {k.code} — {k.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
 
-            {/* Pilih kebun untuk import */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="whitespace-nowrap text-[11px] text-slate-300">
-                Kebun import:
-              </span>
-              <Select
-                value={selectedKebun}
-                onValueChange={(v) => setSelectedKebun(v)}
-              >
-                <SelectTrigger className="h-8 w-[170px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
-                  <SelectValue placeholder="Pilih kebun" />
-                </SelectTrigger>
+              {/* Sumber */}
+              <div className="flex items-center gap-2">
+                <span className="whitespace-nowrap text-[11px] text-slate-300">
+                  Sumber
+                </span>
+                <Select
+                  value={importSource}
+                  onValueChange={(v) => setImportSource(v as RainSource)}
+                >
+                  <SelectTrigger className="h-8 w-[160px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
+                    <SelectItem value="AWS">AWS</SelectItem>
+                    <SelectItem value="OMBROMETER">Ombrometer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
-                  {kebunOptions.map((k) => (
-                    <SelectItem key={k.code} value={k.code}>
-                      {k.code} — {k.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleImportExcel}
+              />
 
-            {/* Pilih sumber untuk import */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="whitespace-nowrap text-[11px] text-slate-300">
-                Sumber import:
-              </span>
-              <Select
-                value={importSource}
-                onValueChange={(v) =>
-                  setImportSource(v as RainSource)
-                }
-              >
-                <SelectTrigger className="h-8 w-[160px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
-                  <SelectItem value="AWS">AWS</SelectItem>
-                  <SelectItem value="OMBROMETER">Ombrometer</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Input file (hidden) + tombol Import & Export */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={handleImportExcel}
-            />
-
-            <div className="flex flex-wrap items-center gap-2">
+              {/* Tombol */}
               <Button
                 type="button"
                 size="sm"
@@ -1519,15 +1465,55 @@ export default function CurahHujanSection() {
                 variant="outline"
                 onClick={handleExportPdf}
                 disabled={
-                  loadingChart ||
-                  (!chartDataAws.length && !chartDataOmbro.length)
+                  exportingPdf || loadingChart || (!chartDataAws.length && !chartDataOmbro.length)
                 }
                 className="h-8 px-3 text-[11px]"
               >
-                Export PDF (2 Grafik)
+                {exportingPdf ? "Mengexport..." : "Export PDF"}
               </Button>
             </div>
+
+            {/* BARIS 2 — FILTER TANGGAL */}
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-12 lg:items-center">
+              {/* Curah Hujan Harian */}
+              <div className="lg:col-span-4">
+                <div className="flex items-center gap-2">
+                  <span className="whitespace-nowrap text-[11px] text-slate-300">
+                    Curah Hujan Harian:
+                  </span>
+                  <Input
+                    type="date"
+                    value={dailyDate}
+                    onChange={(e) => setDailyDate(e.target.value)}
+                    className="h-8 w-[160px] border-emerald-500/40 bg-slate-950/40 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Curah Hujan Total (range) */}
+              <div className="lg:col-span-8">
+                <div className="flex items-center justify-end gap-2">
+                  <span className="whitespace-nowrap text-[11px] text-slate-300">
+                    Curah Hujan Total (range):
+                  </span>
+                  <Input
+                    type="date"
+                    value={rangeStart}
+                    onChange={(e) => setRangeStart(e.target.value)}
+                    className="h-8 w-[160px] border-emerald-500/40 bg-slate-950/40 text-xs"
+                  />
+                  <span className="text-[11px] text-slate-400">s/d</span>
+                  <Input
+                    type="date"
+                    value={rangeEnd}
+                    onChange={(e) => setRangeEnd(e.target.value)}
+                    className="h-8 w-[160px] border-emerald-500/40 bg-slate-950/40 text-xs"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
+
 
           {/* WRAPPER 2 GRAFIK (untuk PDF juga) */}
           <div
@@ -1545,7 +1531,7 @@ export default function CurahHujanSection() {
                   Curah Hujan per Kebun – AWS (mm)
                 </span>
                 <span className="text-[10px] text-slate-400">
-                  Harian {dailyDate} • Total {rangeStart} s/d {rangeEnd}
+                  Curah Hujan Harian {dailyDate} | Curah Hujan Total (range) {rangeStart} s/d {rangeEnd}
                 </span>
               </div>
               {loadingChart ? (
@@ -1649,7 +1635,7 @@ export default function CurahHujanSection() {
                   Curah Hujan per Kebun – Ombrometer (mm)
                 </span>
                 <span className="text-[10px] text-slate-400">
-                  Harian {dailyDate} • Total {rangeStart} s/d {rangeEnd}
+                  Curah Hujan Harian {dailyDate} | Curah Hujan Total (range) {rangeStart} s/d {rangeEnd}
                 </span>
               </div>
               {loadingChart ? (
@@ -1878,6 +1864,42 @@ export default function CurahHujanSection() {
               </p>
               <p className="text-sm text-emerald-50/80">
                 Mengimport data curah hujan...
+              </p>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      {/* ✅ FULLSCREEN LOADING SPINNER SAAT EXPORT PDF */}
+      {exportingPdf && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 backdrop-blur-2xl">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="flex flex-col items-center gap-4"
+          >
+            <div className="relative flex items-center justify-center">
+              {/* Lingkaran luar berputar */}
+              <div className="h-24 w-24 rounded-full border-2 border-emerald-400/25 border-t-emerald-200/95 animate-spin" />
+
+              {/* Logo di tengah lingkaran */}
+              <div className="absolute flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-emerald-100/80 bg-white/90 shadow-[0_18px_45px_rgba(6,40,18,0.8)] backdrop-blur-xl">
+                <Image
+                  src="https://www.ptpn4.co.id/build/assets/Logo%20PTPN%20IV-CyWK9qsP.png"
+                  alt="PTPN 4"
+                  fill
+                  unoptimized
+                  className="object-contain p-1.5"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1 text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-emerald-50/90">
+                PTPN 4 • DIVISI TANAMAN
+              </p>
+              <p className="text-sm text-emerald-50/80">
+                Mengexport PDF curah hujan...
               </p>
             </div>
           </motion.div>
