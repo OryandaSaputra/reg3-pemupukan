@@ -998,25 +998,25 @@ export default function CurahHujanSection() {
 
   /* =========================[ EDIT & DELETE HANDLER ]========================= */
 
-  const handleEditRow = useCallback(
+  const handleAddDaily = useCallback(
     async (row: RainChartItem) => {
       const { value: newValueRaw } = await glassSwal.fire({
         icon: "info",
-        title: `Edit curah hujan – ${row.kebunCode}`,
+        title: `Tambah data harian – ${row.kebunCode}`,
         html: `
-          <div class="text-xs text-slate-300 mb-2">
-            Tanggal harian: <code>${dailyDate}</code><br/>
-            Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
-            Sumber: <b>${tableSource}</b>
-          </div>
-        `,
+        <div class="text-xs text-slate-300 mb-2">
+          Tanggal: <code>${dailyDate}</code><br/>
+          Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
+          Sumber: <b>${tableSource}</b>
+        </div>
+        <div class="text-[11px] text-slate-400">
+          Masukkan curah hujan untuk tanggal harian di atas.
+        </div>
+      `,
         input: "number",
-        inputLabel: "Curah hujan harian (mm)",
-        inputValue: row.dailyMm,
-        inputAttributes: {
-          min: "0",
-          step: "0.01",
-        },
+        inputLabel: "Curah hujan (mm)",
+        inputValue: row.dailyMm ?? 0,
+        inputAttributes: { min: "0", step: "0.01" },
         showCancelButton: true,
         confirmButtonText: "Simpan",
         cancelButtonText: "Batal",
@@ -1029,16 +1029,13 @@ export default function CurahHujanSection() {
         await glassSwal.fire({
           icon: "error",
           title: "Nilai tidak valid",
-          html: `
-            <div class="text-xs text-slate-200">
-              Masukkan angka &ge; 0.
-            </div>
-          `,
+          html: `<div class="text-xs text-slate-200">Masukkan angka &ge; 0.</div>`,
         });
         return;
       }
 
       try {
+        // NOTE: pakai PUT yang saat ini bersifat upsert → cocok untuk "Tambah data harian"
         const res = await fetch("/api/curah-hujan", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1051,16 +1048,164 @@ export default function CurahHujanSection() {
         });
 
         if (!res.ok) {
-          const txt = await res.text();
-          let msg = "Gagal mengubah data curah hujan.";
-          let parsed: unknown = txt;
-          try {
-            parsed = JSON.parse(txt);
-          } catch { }
+          const raw = await readJsonSafe(res);
+          const msg = extractErrorMessage(
+            raw,
+            "Gagal menambah data harian curah hujan."
+          );
+          await glassSwal.fire({
+            icon: "error",
+            title: "Simpan gagal",
+            html: `<div class="text-xs text-slate-200">${msg}</div>`,
+          });
+          return;
+        }
 
-          msg = extractErrorMessage(parsed, "Gagal mengubah data curah hujan.");
+        await glassSwal.fire({
+          icon: "success",
+          title: "Berhasil",
+          html: `<div class="text-xs text-slate-200">Data harian <code>${dailyDate}</code> berhasil disimpan.</div>`,
+        });
 
+        if (dailyDate && rangeStart && rangeEnd) {
+          await fetchChartForSource(tableSource, dailyDate, rangeStart, rangeEnd);
+        }
+      } catch (err) {
+        console.error("handleAddDaily error", err);
+        await glassSwal.fire({
+          icon: "error",
+          title: "Terjadi kesalahan",
+          html: `<div class="text-xs text-slate-200">Gagal menyimpan data harian.</div>`,
+        });
+      }
+    },
+    [dailyDate, rangeStart, rangeEnd, fetchChartForSource, tableSource]
+  );
 
+  const handleEditExisting = useCallback(
+    async (row: RainChartItem) => {
+      try {
+        // Ambil daftar tanggal yang memang sudah ada di DB untuk kebun+sumber ini
+        const resDates = await fetch(
+          `/api/curah-hujan?mode=listDates&kebunCode=${encodeURIComponent(
+            row.kebunCode
+          )}&sumber=${tableSource}`
+        );
+
+        if (!resDates.ok) {
+          const raw = await readJsonSafe(resDates);
+          const msg = extractErrorMessage(raw, "Gagal mengambil daftar tanggal.");
+          await glassSwal.fire({
+            icon: "error",
+            title: "Gagal memuat tanggal",
+            html: `<div class="text-xs text-slate-200">${msg}</div>`,
+          });
+          return;
+        }
+
+        const rawDates = await readJsonSafe(resDates);
+        const dates = unwrapApiData<string[]>(rawDates) ?? [];
+
+        if (!Array.isArray(dates) || dates.length === 0) {
+          await glassSwal.fire({
+            icon: "info",
+            title: "Tidak ada data untuk diedit",
+            html: `
+            <div class="text-xs text-slate-200">
+              Belum ada data tersimpan untuk kebun <b>${row.kebunCode}</b> (sumber ${tableSource}).<br/>
+              Gunakan tombol <b>Tambah Data Harian</b> untuk menambah data.
+            </div>
+          `,
+          });
+          return;
+        }
+
+        const optionsHtml = dates
+          .map((d) => `<option value="${d}">${d}</option>`)
+          .join("");
+
+        // Step 1: pilih tanggal existing
+        const pickDate = await glassSwal.fire({
+          icon: "info",
+          title: "Pilih tanggal yang akan diedit",
+          html: `
+          <div class="text-xs text-slate-300 mb-2">
+            Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
+            Sumber: <b>${tableSource}</b>
+          </div>
+          <select id="tanggal-edit-select"
+            class="mt-2 w-full rounded-lg border border-emerald-400/60 bg-slate-900 text-xs text-slate-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400/80">
+            <option value="">Pilih tanggal</option>
+            ${optionsHtml}
+          </select>
+        `,
+          showCancelButton: true,
+          confirmButtonText: "Lanjut",
+          cancelButtonText: "Batal",
+          focusConfirm: false,
+          preConfirm: () => {
+            const sel = document.getElementById("tanggal-edit-select") as HTMLSelectElement | null;
+            if (!sel || !sel.value) {
+              glassSwal.showValidationMessage("Silakan pilih tanggal terlebih dahulu.");
+              return;
+            }
+            return sel.value;
+          },
+        });
+
+        if (!pickDate.isConfirmed || !pickDate.value) return;
+        const dateToEdit = pickDate.value as string;
+
+        // Step 2: input nilai mm baru (tanpa prefill dari DB karena endpoint getOne belum ada)
+        const { value: newValueRaw } = await glassSwal.fire({
+          icon: "info",
+          title: `Edit data – ${row.kebunCode}`,
+          html: `
+          <div class="text-xs text-slate-300 mb-2">
+            Tanggal: <code>${dateToEdit}</code><br/>
+            Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
+            Sumber: <b>${tableSource}</b>
+          </div>
+          <div class="text-[11px] text-slate-400">
+            Masukkan nilai curah hujan terbaru untuk tanggal tersebut.
+          </div>
+        `,
+          input: "number",
+          inputLabel: "Curah hujan (mm)",
+          inputValue: "",
+          inputAttributes: { min: "0", step: "0.01" },
+          showCancelButton: true,
+          confirmButtonText: "Simpan",
+          cancelButtonText: "Batal",
+        });
+
+        if (newValueRaw === undefined) return;
+
+        const newValue = Number(newValueRaw);
+        if (!Number.isFinite(newValue) || newValue < 0) {
+          await glassSwal.fire({
+            icon: "error",
+            title: "Nilai tidak valid",
+            html: `<div class="text-xs text-slate-200">Masukkan angka &ge; 0.</div>`,
+          });
+          return;
+        }
+
+        // Step 3: update ke backend
+        const res = await fetch("/api/curah-hujan", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kebunCode: row.kebunCode,
+            date: dateToEdit,
+            totalMm: newValue,
+            sumber: tableSource,
+          }),
+        });
+
+        if (!res.ok) {
+          const raw = await readJsonSafe(res);
+          const msg = extractErrorMessage(raw, "Gagal mengubah data curah hujan.");
           await glassSwal.fire({
             icon: "error",
             title: "Edit gagal",
@@ -1073,30 +1218,22 @@ export default function CurahHujanSection() {
           icon: "success",
           title: "Berhasil",
           html: `
-            <div class="text-xs text-slate-200">
-              Curah hujan harian berhasil diperbarui.
-            </div>
-          `,
+          <div class="text-xs text-slate-200">
+            Data tanggal <code>${dateToEdit}</code> berhasil diperbarui.
+          </div>
+        `,
         });
 
+        // Refresh chart/tabel
         if (dailyDate && rangeStart && rangeEnd) {
-          await fetchChartForSource(
-            tableSource,
-            dailyDate,
-            rangeStart,
-            rangeEnd
-          );
+          await fetchChartForSource(tableSource, dailyDate, rangeStart, rangeEnd);
         }
       } catch (err) {
-        console.error("handleEditRow error", err);
+        console.error("handleEditExisting error", err);
         await glassSwal.fire({
           icon: "error",
           title: "Terjadi kesalahan",
-          html: `
-            <div class="text-xs text-slate-200">
-              Gagal mengubah data curah hujan.
-            </div>
-          `,
+          html: `<div class="text-xs text-slate-200">Gagal melakukan edit data.</div>`,
         });
       }
     },
@@ -1160,17 +1297,18 @@ export default function CurahHujanSection() {
             return;
           }
 
-          const dates = (await resDates.json()) as string[];
+          const rawDates = await readJsonSafe(resDates);
+          const dates = unwrapApiData<string[]>(rawDates) ?? [];
 
-          if (!dates.length) {
+          if (!Array.isArray(dates) || dates.length === 0) {
             await glassSwal.fire({
               icon: "info",
               title: "Tidak ada data",
               html: `
-              <div class="text-xs text-slate-200">
-                Tidak ada tanggal data curah hujan yang bisa dihapus untuk kebun ini (sumber ${tableSource}).
-              </div>
-            `,
+      <div class="text-xs text-slate-200">
+        Tidak ada tanggal data curah hujan yang bisa dihapus untuk kebun ini (sumber ${tableSource}).
+      </div>
+    `,
             });
             return;
           }
@@ -1814,10 +1952,21 @@ export default function CurahHujanSection() {
                             size="sm"
                             variant="outline"
                             className="h-6 px-2 text-[10px]"
-                            onClick={() => void handleEditRow(row)}
+                            onClick={() => void handleAddDaily(row)}
+                          >
+                            Tambah Data Harian
+                          </Button>
+
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            onClick={() => void handleEditExisting(row)}
                           >
                             Edit
                           </Button>
+
                           <Button
                             type="button"
                             size="sm"

@@ -87,6 +87,22 @@ export async function upsertOne(kebunCode: string, kebunName: string, tanggal: D
   });
 }
 
+export async function updateOneStrict(
+  kebunCode: string,
+  kebunName: string,
+  tanggal: Date,
+  sumber: RainSource,
+  totalMm: number
+) {
+  // jika record tidak ada, Prisma akan throw P2025
+  return prisma.curahHujanHarian.update({
+    where: {
+      kebunCode_tanggal_sumber: { kebunCode, tanggal, sumber },
+    },
+    data: { kebunName, totalMm, sumber },
+  });
+}
+
 export async function deleteAll(kebunCode: string, sumber?: RainSource) {
   return prisma.curahHujanHarian.deleteMany({
     where: { kebunCode, ...(sumber ? { sumber } : {}) },

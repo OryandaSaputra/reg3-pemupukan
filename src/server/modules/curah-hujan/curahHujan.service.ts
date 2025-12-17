@@ -146,14 +146,37 @@ export async function listDates(kebunCode: string, sumber: RainSource) {
   return repo.listDates(kebunCode, sumber);
 }
 
-export async function updateDaily(params: {
+export async function upsertDaily(params: {
   kebunCode: string;
   date: Date;
   sumber: RainSource;
   totalMm: number;
 }) {
   const kebunName = KEBUN_LABEL[params.kebunCode] ?? params.kebunCode;
-  await repo.upsertOne(params.kebunCode, kebunName, params.date, params.sumber, params.totalMm);
+  await repo.upsertOne(
+    params.kebunCode,
+    kebunName,
+    params.date,
+    params.sumber,
+    params.totalMm
+  );
+}
+
+export async function updateDailyStrict(params: {
+  kebunCode: string;
+  date: Date;
+  sumber: RainSource;
+  totalMm: number;
+}) {
+  const kebunName = KEBUN_LABEL[params.kebunCode] ?? params.kebunCode;
+  // Jika tidak ada data -> repo.updateOneStrict akan throw (P2025)
+  await repo.updateOneStrict(
+    params.kebunCode,
+    kebunName,
+    params.date,
+    params.sumber,
+    params.totalMm
+  );
 }
 
 export async function deleteAll(params: { kebunCode: string; sumber?: RainSource }) {

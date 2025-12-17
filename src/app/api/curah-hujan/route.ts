@@ -15,7 +15,6 @@ import * as service from "@/server/modules/curah-hujan/curahHujan.service";
 const MAX_ROWS_PER_UPLOAD = 500;
 
 /* =============================== POST =============================== */
-
 export async function POST(req: Request) {
   const session = await requireSession();
   if (!session) return fail(401, "Unauthorized", "UNAUTHORIZED");
@@ -34,7 +33,11 @@ export async function POST(req: Request) {
     });
 
     if (!result.ok) {
-      return fail(result.status, result.message, result.status === 413 ? "PAYLOAD_TOO_LARGE" : "BAD_REQUEST");
+      return fail(
+        result.status,
+        result.message,
+        result.status === 413 ? "PAYLOAD_TOO_LARGE" : "BAD_REQUEST"
+      );
     }
 
     return created({
@@ -43,7 +46,6 @@ export async function POST(req: Request) {
       days: result.days,
       invalidRows: result.invalidRows,
     });
-
   } catch (err) {
     console.error("POST /api/curah-hujan error", err);
     return fail(500, "Terjadi kesalahan saat import curah hujan.", "INTERNAL_ERROR");
@@ -51,7 +53,6 @@ export async function POST(req: Request) {
 }
 
 /* ================================ GET =============================== */
-
 export async function GET(req: Request) {
   // 🔒 rekomendasi: GET juga dilindungi (biar data tidak bocor)
   const session = await requireSession();
@@ -106,7 +107,6 @@ export async function GET(req: Request) {
     }
 
     const sumber = parsed.data.sumber ?? RainSourceSchema.parse(undefined);
-
     const items = await service.getSummary({
       dailyDate,
       startDate,
@@ -122,7 +122,6 @@ export async function GET(req: Request) {
 }
 
 /* ================================ PUT =============================== */
-
 export async function PUT(req: Request) {
   const session = await requireSession();
   if (!session) return fail(401, "Unauthorized", "UNAUTHORIZED");
@@ -136,7 +135,43 @@ export async function PUT(req: Request) {
     const tanggal = ymdToUtcDate(parsed.data.date);
     const sumber = parsed.data.sumber ?? RainSourceSchema.parse(undefined);
 
-    await service.updateDaily({
+    // ✅ mode:
+    // - upsert: boleh bikin record baru (untuk Tambah Data Harian)
+    // - strict: harus sudah ada record (untuk Edit)
+    if (parsed.data.mode === "strict") {
+      try {
+        await service.updateDailyStrict({
+          kebunCode: parsed.data.kebunCode.trim(),
+          date: tanggal,
+          sumber,
+          totalMm: parsed.data.totalMm,
+        });
+      } catch (err: unknown) {
+        // Prisma "Record to update not found." -> P2025
+        const maybe = err as { code?: unknown };
+        if (maybe?.code === "P2025") {
+          return fail(
+            404,
+            "Data tidak ditemukan untuk tanggal tersebut. Gunakan 'Tambah Data Harian' jika ingin menambah data baru.",
+            // ✅ ganti ke kode yang SUDAH ada di type kamu
+            "BAD_REQUEST"
+          );
+        }
+        throw err;
+      }
+
+      return ok({
+        message: "Berhasil mengubah curah hujan harian (strict).",
+        kebunCode: parsed.data.kebunCode,
+        date: parsed.data.date,
+        totalMm: parsed.data.totalMm,
+        sumber,
+        mode: "strict",
+      });
+    }
+
+    // default: upsert
+    await service.upsertDaily({
       kebunCode: parsed.data.kebunCode.trim(),
       date: tanggal,
       sumber,
@@ -144,11 +179,12 @@ export async function PUT(req: Request) {
     });
 
     return ok({
-      message: "Berhasil mengubah curah hujan harian.",
+      message: "Berhasil menyimpan curah hujan harian (upsert).",
       kebunCode: parsed.data.kebunCode,
       date: parsed.data.date,
       totalMm: parsed.data.totalMm,
       sumber,
+      mode: "upsert",
     });
   } catch (err) {
     console.error("PUT /api/curah-hujan error", err);
@@ -157,7 +193,6 @@ export async function PUT(req: Request) {
 }
 
 /* ============================== DELETE ============================== */
-
 export async function DELETE(req: Request) {
   const session = await requireSession();
   if (!session) return fail(401, "Unauthorized", "UNAUTHORIZED");
@@ -174,6 +209,7 @@ export async function DELETE(req: Request) {
     // mode deleteAll
     if (parsed.data.deleteAll === true) {
       await service.deleteAll({ kebunCode, sumber });
+
       return ok({
         message: sumber
           ? `Berhasil menghapus seluruh data curah hujan (${sumber}) untuk kebun ${kebunCode}.`
@@ -194,7 +230,6 @@ export async function DELETE(req: Request) {
     }
 
     const tanggal = ymdToUtcDate(parsed.data.date);
-
     await service.deleteByDate({ kebunCode, date: tanggal, sumber });
 
     return ok({

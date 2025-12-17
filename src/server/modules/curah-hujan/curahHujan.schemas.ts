@@ -43,6 +43,14 @@ export const PutPayloadSchema = z.object({
   date: DateYmd,
   totalMm: z.number().finite().min(0, "totalMm harus >= 0."),
   sumber: RainSourceSchema.optional(),
+
+  // ✅ NEW:
+  // - upsert (default): cocok untuk "Tambah Data Harian"
+  // - strict: untuk "Edit" (harus sudah ada datanya)
+  mode: z
+    .enum(["upsert", "strict"])
+    .optional()
+    .transform((v) => v ?? "upsert"),
 });
 
 export const DeletePayloadSchema = z.object({
