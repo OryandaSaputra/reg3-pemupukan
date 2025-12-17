@@ -41,6 +41,64 @@ export async function getRangeAgg(startDate: Date, endDate: Date, sumber: RainSo
   });
 }
 
+export async function getMonthlyRecap(params: {
+  year: number;
+  sumber: RainSource;
+  kebunCode?: string;
+}): Promise<{ month: number; totalMm: number; rainyDays: number }[]> {
+  const { year, sumber, kebunCode } = params;
+
+  const start = new Date(Date.UTC(year, 0, 1));  // Jan 1
+  const end = new Date(Date.UTC(year, 11, 31));  // Dec 31
+
+  // Catatan:
+  // - Jika kebunCode DIPILIH => rainyDays = jumlah hari (row) totalMm > 0
+  // - Jika kebunCode KOSONG (total semua kebun) => rainyDays = jumlah tanggal unik per bulan
+  //   yang SUM(totalMm) lintas kebun > 0 (pakai CTE)
+  if (kebunCode) {
+    const rows = await prisma.$queryRaw<
+      { month: number; totalMm: number; rainyDays: number }[]
+    >(Prisma.sql`
+      SELECT
+        EXTRACT(MONTH FROM "tanggal")::int AS "month",
+        COALESCE(SUM("totalMm"), 0)::float AS "totalMm",
+        COALESCE(SUM(CASE WHEN "totalMm" > 0 THEN 1 ELSE 0 END), 0)::int AS "rainyDays"
+      FROM "CurahHujanHarian"
+      WHERE "tanggal" >= ${start} AND "tanggal" <= ${end}
+        AND "sumber" = ${sumber}
+        AND "kebunCode" = ${kebunCode}
+      GROUP BY 1
+      ORDER BY 1
+    `);
+
+    return rows;
+  }
+
+  const rows = await prisma.$queryRaw<
+    { month: number; totalMm: number; rainyDays: number }[]
+  >(Prisma.sql`
+    WITH daily AS (
+      SELECT
+        "tanggal",
+        EXTRACT(MONTH FROM "tanggal")::int AS "month",
+        COALESCE(SUM("totalMm"), 0)::float AS "mm"
+      FROM "CurahHujanHarian"
+      WHERE "tanggal" >= ${start} AND "tanggal" <= ${end}
+        AND "sumber" = ${sumber}
+      GROUP BY "tanggal"
+    )
+    SELECT
+      "month",
+      COALESCE(SUM("mm"), 0)::float AS "totalMm",
+      COALESCE(SUM(CASE WHEN "mm" > 0 THEN 1 ELSE 0 END), 0)::int AS "rainyDays"
+    FROM daily
+    GROUP BY "month"
+    ORDER BY "month"
+  `);
+
+  return rows;
+}
+
 /**
  * Bulk upsert yang cepat:
  * INSERT ... ON CONFLICT (kebunCode, tanggal, sumber) DO UPDATE SET ...

@@ -45,7 +45,9 @@ export async function importRows(params: {
   }
 
   const aggregated = Array.from(bucket.values());
-  const days = Array.from(bucket.keys()).sort(); if (!aggregated.length) {
+  const days = Array.from(bucket.keys()).sort();
+
+  if (!aggregated.length) {
     return {
       ok: true as const,
       status: 201,
@@ -140,6 +142,27 @@ export async function getSummary(params: {
       dailyMm: round2(it.dailyMm),
       mtdMm: round2(it.mtdMm),
     }));
+}
+
+export async function getMonthlyRecap(params: {
+  year: number;
+  kebunCode?: string;
+  sumber: RainSource;
+}) {
+  const { year, kebunCode, sumber } = params;
+
+  const rows = await repo.getMonthlyRecap({
+    year,
+    sumber,
+    kebunCode,
+  });
+
+  // Frontend sudah bikin label Jan–Des, jadi backend cukup kirim month + angka
+  return rows.map((r) => ({
+    month: r.month,
+    totalMm: round2(r.totalMm),
+    rainyDays: Number(r.rainyDays ?? 0),
+  }));
 }
 
 export async function listDates(kebunCode: string, sumber: RainSource) {

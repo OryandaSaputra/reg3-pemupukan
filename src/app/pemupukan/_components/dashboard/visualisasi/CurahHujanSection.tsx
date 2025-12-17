@@ -14,6 +14,8 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  ComposedChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -101,6 +103,22 @@ type RainChartItem = {
   mtdMm: number; // total pada range filter (start–end)
 };
 
+// Rekap bulanan (untuk chart Jan–Des)
+type MonthlyRecapItem = {
+  month: number; // 1-12
+  monthLabel: string; // "Jan".."Des"
+  totalMm: number;
+  rainyDays: number;
+};
+
+type MonthlyRecapScaledItem = MonthlyRecapItem & {
+  rainyDaysScaled: number;
+};
+
+const MONTH_LABELS_ID = [
+  "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
+];
+
 /**
  * Pasangan warna per kebun:
  * - dark  → untuk bar total (mtdMm)
@@ -160,6 +178,37 @@ const RainTooltip: React.FC<RainTooltipProps> = ({
           Total periode (range):{" "}
           <span className="font-mono font-semibold">
             {item.mtdMm} mm
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type MonthlyTooltipProps = {
+  active?: boolean;
+  payload?: { payload: MonthlyRecapItem }[];
+};
+
+const MonthlyTooltip: React.FC<MonthlyTooltipProps> = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const item = payload[0]?.payload as MonthlyRecapItem;
+  if (!item) return null;
+
+  return (
+    <div className="rounded-xl border border-emerald-500/30 bg-slate-950/80 px-3 py-2 text-xs text-slate-50 shadow-lg backdrop-blur">
+      <div className="font-semibold">Bulan {item.monthLabel}</div>
+      <div className="mt-1 space-y-0.5 text-[11px] text-slate-300">
+        <div>
+          Total mm:{" "}
+          <span className="font-mono font-semibold">
+            {Number(item.totalMm ?? 0).toFixed(2)}
+          </span>
+        </div>
+        <div>
+          Hari hujan:{" "}
+          <span className="font-mono font-semibold">
+            {Number(item.rainyDays ?? 0)}
           </span>
         </div>
       </div>
@@ -254,6 +303,7 @@ function extractErrorMessage(payload: unknown, fallback: string): string {
 }
 
 export default function CurahHujanSection() {
+
   // Tanggal harian (untuk bar daily) → default: hari ini di Asia/Jakarta
   const [dailyDate, setDailyDate] = useState<string>(() =>
     getTodayJakartaString()
@@ -274,10 +324,27 @@ export default function CurahHujanSection() {
   const [chartDataOmbro, setChartDataOmbro] = useState<RainChartItem[]>([]);
   const [tableSource, setTableSource] = useState<RainSource>("AWS");
 
+  // ====================[ REKAP BULANAN ]====================
+  // default: total 20 kebun -> monthlyKebun = ""
+  const [monthlyKebun, setMonthlyKebun] = useState<string>("");
+  const [monthlyData, setMonthlyData] = useState<MonthlyRecapItem[]>(() =>
+    MONTH_LABELS_ID.map((m, idx) => ({
+      month: idx + 1,
+      monthLabel: m,
+      totalMm: 0,
+      rainyDays: 0,
+    }))
+  );
+  const [loadingMonthly, setLoadingMonthly] = useState(false);
+
+  const [monthlySource, setMonthlySource] = useState<RainSource>("AWS");
+
   const [loadingChart, setLoadingChart] = useState(false);
   const [importing, setImporting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const MONTHLY_ALL = "__ALL__";
 
   // Wrapper berisi 2 grafik (AWS + Ombrometer) untuk di-export PDF
   const pdfWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -418,6 +485,83 @@ export default function CurahHujanSection() {
 
     fileInputRef.current?.click();
   }, [selectedKebun]);
+
+  // ====================[ FETCH REKAP BULANAN ]====================
+  const fetchMonthlyRecap = useCallback(async () => {
+    setLoadingMonthly(true);
+    try {
+      const base = rangeEnd || dailyDate || getTodayJakartaString();
+      const year = Number(String(base).slice(0, 4)) || new Date().getFullYear();
+
+      const params = new URLSearchParams({
+        mode: "monthlyRecap",
+        year: String(year),
+        sumber: monthlySource, // ✅
+      });
+
+      if (monthlyKebun) params.set("kebunCode", monthlyKebun); // ✅
+
+      const res = await fetch(`/api/curah-hujan?${params.toString()}`);
+      if (!res.ok) {
+        // backend belum siap -> fallback aman (tetap 12 bulan)
+        setMonthlyData(
+          MONTH_LABELS_ID.map((m, idx) => ({
+            month: idx + 1,
+            monthLabel: m,
+            totalMm: 0,
+            rainyDays: 0,
+          }))
+        );
+        return;
+      }
+
+      const raw = await readJsonSafe(res);
+      const rows = unwrapApiData<
+        {
+          month?: number;
+          monthLabel?: string;
+          totalMm?: number | string | null;
+          rainyDays?: number | string | null;
+        }[]
+      >(raw);
+
+      const map = new Map<number, MonthlyRecapItem>();
+      for (const r of rows ?? []) {
+        const mo = Number(r.month ?? 0);
+        if (mo < 1 || mo > 12) continue;
+        map.set(mo, {
+          month: mo,
+          monthLabel: String(r.monthLabel ?? MONTH_LABELS_ID[mo - 1] ?? String(mo)),
+          totalMm: Number(r.totalMm ?? 0) || 0,
+          rainyDays: Number(r.rainyDays ?? 0) || 0,
+        });
+      }
+
+      // pastikan output selalu 12 bulan Jan–Des
+      setMonthlyData(
+        MONTH_LABELS_ID.map((m, idx) => {
+          const mo = idx + 1;
+          const found = map.get(mo);
+          return {
+            month: mo,
+            monthLabel: m,
+            totalMm: found?.totalMm ?? 0,
+            rainyDays: found?.rainyDays ?? 0,
+          };
+        })
+      );
+    } catch (err) {
+      console.error("fetchMonthlyRecap error:", err);
+    } finally {
+      setLoadingMonthly(false);
+    }
+  }, [rangeEnd, dailyDate, monthlyKebun, monthlySource]);
+
+  useEffect(() => {
+    if (!hasAnyKebun) return;
+    void fetchMonthlyRecap();
+  }, [fetchMonthlyRecap, hasAnyKebun]);
+
 
   /**
  * Export PDF:
@@ -971,6 +1115,8 @@ export default function CurahHujanSection() {
             rangeEnd
           );
         }
+        // refresh rekap bulanan juga
+        void fetchMonthlyRecap();
       } catch (err) {
         console.error("handleImportExcel error", err);
         await glassSwal.fire({
@@ -993,30 +1139,31 @@ export default function CurahHujanSection() {
       rangeStart,
       rangeEnd,
       fetchChartForSource,
+      fetchMonthlyRecap,
     ]
   );
 
   /* =========================[ EDIT & DELETE HANDLER ]========================= */
 
-  const handleAddDaily = useCallback(
+  const handleEditRow = useCallback(
     async (row: RainChartItem) => {
       const { value: newValueRaw } = await glassSwal.fire({
         icon: "info",
-        title: `Tambah data harian – ${row.kebunCode}`,
+        title: `Edit curah hujan – ${row.kebunCode}`,
         html: `
-        <div class="text-xs text-slate-300 mb-2">
-          Tanggal: <code>${dailyDate}</code><br/>
-          Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
-          Sumber: <b>${tableSource}</b>
-        </div>
-        <div class="text-[11px] text-slate-400">
-          Masukkan curah hujan untuk tanggal harian di atas.
-        </div>
-      `,
+          <div class="text-xs text-slate-300 mb-2">
+            Tanggal harian: <code>${dailyDate}</code><br/>
+            Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
+            Sumber: <b>${tableSource}</b>
+          </div>
+        `,
         input: "number",
-        inputLabel: "Curah hujan (mm)",
-        inputValue: row.dailyMm ?? 0,
-        inputAttributes: { min: "0", step: "0.01" },
+        inputLabel: "Curah hujan harian (mm)",
+        inputValue: row.dailyMm,
+        inputAttributes: {
+          min: "0",
+          step: "0.01",
+        },
         showCancelButton: true,
         confirmButtonText: "Simpan",
         cancelButtonText: "Batal",
@@ -1029,13 +1176,16 @@ export default function CurahHujanSection() {
         await glassSwal.fire({
           icon: "error",
           title: "Nilai tidak valid",
-          html: `<div class="text-xs text-slate-200">Masukkan angka &ge; 0.</div>`,
+          html: `
+            <div class="text-xs text-slate-200">
+              Masukkan angka &ge; 0.
+            </div>
+          `,
         });
         return;
       }
 
       try {
-        // NOTE: pakai PUT yang saat ini bersifat upsert → cocok untuk "Tambah data harian"
         const res = await fetch("/api/curah-hujan", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1048,164 +1198,16 @@ export default function CurahHujanSection() {
         });
 
         if (!res.ok) {
-          const raw = await readJsonSafe(res);
-          const msg = extractErrorMessage(
-            raw,
-            "Gagal menambah data harian curah hujan."
-          );
-          await glassSwal.fire({
-            icon: "error",
-            title: "Simpan gagal",
-            html: `<div class="text-xs text-slate-200">${msg}</div>`,
-          });
-          return;
-        }
+          const txt = await res.text();
+          let msg = "Gagal mengubah data curah hujan.";
+          let parsed: unknown = txt;
+          try {
+            parsed = JSON.parse(txt);
+          } catch { }
 
-        await glassSwal.fire({
-          icon: "success",
-          title: "Berhasil",
-          html: `<div class="text-xs text-slate-200">Data harian <code>${dailyDate}</code> berhasil disimpan.</div>`,
-        });
+          msg = extractErrorMessage(parsed, "Gagal mengubah data curah hujan.");
 
-        if (dailyDate && rangeStart && rangeEnd) {
-          await fetchChartForSource(tableSource, dailyDate, rangeStart, rangeEnd);
-        }
-      } catch (err) {
-        console.error("handleAddDaily error", err);
-        await glassSwal.fire({
-          icon: "error",
-          title: "Terjadi kesalahan",
-          html: `<div class="text-xs text-slate-200">Gagal menyimpan data harian.</div>`,
-        });
-      }
-    },
-    [dailyDate, rangeStart, rangeEnd, fetchChartForSource, tableSource]
-  );
 
-  const handleEditExisting = useCallback(
-    async (row: RainChartItem) => {
-      try {
-        // Ambil daftar tanggal yang memang sudah ada di DB untuk kebun+sumber ini
-        const resDates = await fetch(
-          `/api/curah-hujan?mode=listDates&kebunCode=${encodeURIComponent(
-            row.kebunCode
-          )}&sumber=${tableSource}`
-        );
-
-        if (!resDates.ok) {
-          const raw = await readJsonSafe(resDates);
-          const msg = extractErrorMessage(raw, "Gagal mengambil daftar tanggal.");
-          await glassSwal.fire({
-            icon: "error",
-            title: "Gagal memuat tanggal",
-            html: `<div class="text-xs text-slate-200">${msg}</div>`,
-          });
-          return;
-        }
-
-        const rawDates = await readJsonSafe(resDates);
-        const dates = unwrapApiData<string[]>(rawDates) ?? [];
-
-        if (!Array.isArray(dates) || dates.length === 0) {
-          await glassSwal.fire({
-            icon: "info",
-            title: "Tidak ada data untuk diedit",
-            html: `
-            <div class="text-xs text-slate-200">
-              Belum ada data tersimpan untuk kebun <b>${row.kebunCode}</b> (sumber ${tableSource}).<br/>
-              Gunakan tombol <b>Tambah Data Harian</b> untuk menambah data.
-            </div>
-          `,
-          });
-          return;
-        }
-
-        const optionsHtml = dates
-          .map((d) => `<option value="${d}">${d}</option>`)
-          .join("");
-
-        // Step 1: pilih tanggal existing
-        const pickDate = await glassSwal.fire({
-          icon: "info",
-          title: "Pilih tanggal yang akan diedit",
-          html: `
-          <div class="text-xs text-slate-300 mb-2">
-            Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
-            Sumber: <b>${tableSource}</b>
-          </div>
-          <select id="tanggal-edit-select"
-            class="mt-2 w-full rounded-lg border border-emerald-400/60 bg-slate-900 text-xs text-slate-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400/80">
-            <option value="">Pilih tanggal</option>
-            ${optionsHtml}
-          </select>
-        `,
-          showCancelButton: true,
-          confirmButtonText: "Lanjut",
-          cancelButtonText: "Batal",
-          focusConfirm: false,
-          preConfirm: () => {
-            const sel = document.getElementById("tanggal-edit-select") as HTMLSelectElement | null;
-            if (!sel || !sel.value) {
-              glassSwal.showValidationMessage("Silakan pilih tanggal terlebih dahulu.");
-              return;
-            }
-            return sel.value;
-          },
-        });
-
-        if (!pickDate.isConfirmed || !pickDate.value) return;
-        const dateToEdit = pickDate.value as string;
-
-        // Step 2: input nilai mm baru (tanpa prefill dari DB karena endpoint getOne belum ada)
-        const { value: newValueRaw } = await glassSwal.fire({
-          icon: "info",
-          title: `Edit data – ${row.kebunCode}`,
-          html: `
-          <div class="text-xs text-slate-300 mb-2">
-            Tanggal: <code>${dateToEdit}</code><br/>
-            Kebun: <b>${row.kebunCode} – ${row.kebunName}</b><br/>
-            Sumber: <b>${tableSource}</b>
-          </div>
-          <div class="text-[11px] text-slate-400">
-            Masukkan nilai curah hujan terbaru untuk tanggal tersebut.
-          </div>
-        `,
-          input: "number",
-          inputLabel: "Curah hujan (mm)",
-          inputValue: "",
-          inputAttributes: { min: "0", step: "0.01" },
-          showCancelButton: true,
-          confirmButtonText: "Simpan",
-          cancelButtonText: "Batal",
-        });
-
-        if (newValueRaw === undefined) return;
-
-        const newValue = Number(newValueRaw);
-        if (!Number.isFinite(newValue) || newValue < 0) {
-          await glassSwal.fire({
-            icon: "error",
-            title: "Nilai tidak valid",
-            html: `<div class="text-xs text-slate-200">Masukkan angka &ge; 0.</div>`,
-          });
-          return;
-        }
-
-        // Step 3: update ke backend
-        const res = await fetch("/api/curah-hujan", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            kebunCode: row.kebunCode,
-            date: dateToEdit,
-            totalMm: newValue,
-            sumber: tableSource,
-          }),
-        });
-
-        if (!res.ok) {
-          const raw = await readJsonSafe(res);
-          const msg = extractErrorMessage(raw, "Gagal mengubah data curah hujan.");
           await glassSwal.fire({
             icon: "error",
             title: "Edit gagal",
@@ -1218,26 +1220,36 @@ export default function CurahHujanSection() {
           icon: "success",
           title: "Berhasil",
           html: `
-          <div class="text-xs text-slate-200">
-            Data tanggal <code>${dateToEdit}</code> berhasil diperbarui.
-          </div>
-        `,
+            <div class="text-xs text-slate-200">
+              Curah hujan harian berhasil diperbarui.
+            </div>
+          `,
         });
 
-        // Refresh chart/tabel
         if (dailyDate && rangeStart && rangeEnd) {
-          await fetchChartForSource(tableSource, dailyDate, rangeStart, rangeEnd);
+          await fetchChartForSource(
+            tableSource,
+            dailyDate,
+            rangeStart,
+            rangeEnd
+          );
         }
+        // refresh rekap bulanan juga
+        void fetchMonthlyRecap();
       } catch (err) {
-        console.error("handleEditExisting error", err);
+        console.error("handleEditRow error", err);
         await glassSwal.fire({
           icon: "error",
           title: "Terjadi kesalahan",
-          html: `<div class="text-xs text-slate-200">Gagal melakukan edit data.</div>`,
+          html: `
+            <div class="text-xs text-slate-200">
+              Gagal mengubah data curah hujan.
+            </div>
+          `,
         });
       }
     },
-    [dailyDate, rangeStart, rangeEnd, fetchChartForSource, tableSource]
+    [dailyDate, rangeStart, rangeEnd, fetchChartForSource, tableSource, fetchMonthlyRecap]
   );
 
   const handleDeleteRow = useCallback(
@@ -1297,18 +1309,17 @@ export default function CurahHujanSection() {
             return;
           }
 
-          const rawDates = await readJsonSafe(resDates);
-          const dates = unwrapApiData<string[]>(rawDates) ?? [];
+          const dates = (await resDates.json()) as string[];
 
-          if (!Array.isArray(dates) || dates.length === 0) {
+          if (!dates.length) {
             await glassSwal.fire({
               icon: "info",
               title: "Tidak ada data",
               html: `
-      <div class="text-xs text-slate-200">
-        Tidak ada tanggal data curah hujan yang bisa dihapus untuk kebun ini (sumber ${tableSource}).
-      </div>
-    `,
+              <div class="text-xs text-slate-200">
+                Tidak ada tanggal data curah hujan yang bisa dihapus untuk kebun ini (sumber ${tableSource}).
+              </div>
+            `,
             });
             return;
           }
@@ -1428,6 +1439,8 @@ export default function CurahHujanSection() {
               rangeEnd
             );
           }
+          // refresh rekap bulanan juga
+          void fetchMonthlyRecap();
         } catch (err) {
           console.error("handleDeleteRow (per tanggal) error", err);
           await glassSwal.fire({
@@ -1514,6 +1527,8 @@ export default function CurahHujanSection() {
               rangeEnd
             );
           }
+          // refresh rekap bulanan juga
+          void fetchMonthlyRecap();
         } catch (err) {
           console.error("handleDeleteRow (delete all) error", err);
           await glassSwal.fire({
@@ -1528,11 +1543,26 @@ export default function CurahHujanSection() {
         }
       }
     },
-    [dailyDate, rangeStart, rangeEnd, fetchChartForSource, tableSource]
+    [dailyDate, rangeStart, rangeEnd, fetchChartForSource, tableSource, fetchMonthlyRecap]
   );
 
   // Data tabel mengikuti sumber yang dipilih
   const tableData = tableSource === "AWS" ? chartDataAws : chartDataOmbro;
+
+  // ✅ Tambahkan DI SINI (sebelum return)
+  const { monthlyDataScaled, daysScale } = useMemo(() => {
+    const maxMm = Math.max(...(monthlyData ?? []).map((d) => Number(d.totalMm ?? 0)), 0);
+    const maxDays = Math.max(...(monthlyData ?? []).map((d) => Number(d.rainyDays ?? 0)), 0);
+
+    const scale = maxDays > 0 && maxMm > 0 ? maxMm / maxDays : 1;
+
+    const scaled: MonthlyRecapScaledItem[] = (monthlyData ?? []).map((d) => ({
+      ...d,
+      rainyDaysScaled: Number(d.rainyDays ?? 0) * scale,
+    }));
+
+    return { monthlyDataScaled: scaled, daysScale: scale };
+  }, [monthlyData]);
 
   return (
     <>
@@ -1952,21 +1982,10 @@ export default function CurahHujanSection() {
                             size="sm"
                             variant="outline"
                             className="h-6 px-2 text-[10px]"
-                            onClick={() => void handleAddDaily(row)}
+                            onClick={() => void handleEditRow(row)}
                           >
                             Tambah Data Harian
                           </Button>
-
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px]"
-                            onClick={() => void handleEditExisting(row)}
-                          >
-                            Edit
-                          </Button>
-
                           <Button
                             type="button"
                             size="sm"
@@ -1987,42 +2006,189 @@ export default function CurahHujanSection() {
         </ChartCard>
       </section>
 
-      {/* FULLSCREEN LOADING SPINNER SAAT IMPORT */}
-      {importing && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 backdrop-blur-2xl">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="flex flex-col items-center gap-4"
-          >
-            <div className="relative flex items-center justify-center">
-              {/* Lingkaran luar berputar */}
-              <div className="h-24 w-24 rounded-full border-2 border-emerald-400/25 border-t-emerald-200/95 animate-spin" />
+      {/* =====================[ CARD REKAP BULANAN ]===================== */}
+      <section className="mt-6">
+        <ChartCard
+          title="Rekap Curah Hujan per Bulan"
+          subtitle="Bar (kiri): total mm/bulan. Line (kanan): total hari hujan/bulan. Default menampilkan akumulasi dari 20 kebun."
+        >
+          <div className="mb-3 flex flex-wrap items-center justify-end gap-3 text-xs">
+            {/* Kebun */}
+            <div className="flex items-center gap-2">
+              <span className="whitespace-nowrap text-[11px] text-slate-300">Kebun</span>
+              <Select
+                value={monthlyKebun || MONTHLY_ALL}
+                onValueChange={(v) => setMonthlyKebun(v === MONTHLY_ALL ? "" : v)}
+              >
+                <SelectTrigger className="h-8 w-[260px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
+                  <SelectValue placeholder="Total 20 Kebun" />
+                </SelectTrigger>
+                <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
+                  <SelectItem value={MONTHLY_ALL}>Total 20 Kebun</SelectItem>
+                  {kebunOptions.map((k) => (
+                    <SelectItem key={`monthly-${k.code}`} value={k.code}>
+                      {k.code} — {k.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-              {/* Logo di tengah lingkaran */}
-              <div className="absolute flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-emerald-100/80 bg-white/90 shadow-[0_18px_45px_rgba(6,40,18,0.8)] backdrop-blur-xl">
-                <Image
-                  src="https://www.ptpn4.co.id/build/assets/Logo%20PTPN%20IV-CyWK9qsP.png"
-                  alt="PTPN 4"
-                  fill
-                  unoptimized
-                  className="object-contain p-1.5"
-                />
+            {/* Sumber */}
+            <div className="flex items-center gap-2">
+              <span className="whitespace-nowrap text-[11px] text-slate-300">Sumber</span>
+              <Select value={monthlySource} onValueChange={(v) => setMonthlySource(v as RainSource)}>
+                <SelectTrigger className="h-8 w-[160px] border border-emerald-500/60 bg-slate-900 text-xs text-slate-100">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
+                  <SelectItem value="AWS">AWS</SelectItem>
+                  <SelectItem value="OMBROMETER">Ombrometer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 px-3 text-[11px]"
+              onClick={() => void fetchMonthlyRecap()}
+              disabled={loadingMonthly || !hasAnyKebun}
+            >
+              {loadingMonthly ? "Memuat..." : "Refresh"}
+            </Button>
+          </div>
+
+          <div className="h-[280px] w-full rounded-xl border border-emerald-500/20 bg-slate-950/40 p-2">
+            {!hasAnyKebun ? (
+              <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
               </div>
-            </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart
+                  data={monthlyDataScaled}
+                  margin={{ top: 10, right: 18, left: 0, bottom: 10 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="monthLabel" tick={{ fontSize: 11, fill: "#E5E7EB" }} />
 
-            <div className="space-y-1 text-center">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-emerald-50/90">
-                PTPN 4 • DIVISI TANAMAN
-              </p>
-              <p className="text-sm text-emerald-50/80">
-                Mengimport data curah hujan...
-              </p>
-            </div>
-          </motion.div>
-        </div>
-      )}
+                  {/* Y kiri: total mm */}
+                  <YAxis
+                    yAxisId="mm"
+                    tick={{ fontSize: 11, fill: "#E5E7EB" }}
+                    allowDecimals={false}
+                    label={{
+                      value: "Total mm/bulan",
+                      angle: -90,
+                      position: "insideLeft",
+                      fill: "#E5E7EB",
+                      fontSize: 11,
+                    }}
+                  />
+
+                  {/* Y kanan: rainy days */}
+                  <YAxis
+                    yAxisId="days"
+                    orientation="right"
+                    tick={{ fontSize: 11, fill: "#E5E7EB" }}
+                    allowDecimals={false}
+                    domain={[0, "dataMax"]} // ✅ range sama dgn data scaled
+                    tickFormatter={(v: number) => {
+                      const n = daysScale > 0 ? v / daysScale : 0; // ✅ daysScale kepakai -> no unused-vars
+                      return String(Math.round(n));
+                    }}
+                    label={{
+                      value: "Hari hujan/bulan",
+                      angle: -90,
+                      position: "insideRight",
+                      fill: "#E5E7EB",
+                      fontSize: 11,
+                    }}
+                  />
+
+                  <Tooltip content={(props) => <MonthlyTooltip {...props} />} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: "#E5E7EB" }} />
+
+                  <Bar
+                    yAxisId="mm"
+                    dataKey="totalMm"
+                    name="Total mm/bulan"
+                    barSize={18}
+                    radius={[8, 8, 0, 0]}
+                    fill="#34D399"
+                  >
+                    <LabelList
+                      dataKey="totalMm"
+                      position="top"
+                      className="fill-slate-100 text-[10px]"
+                      formatter={(v: unknown) => {
+                        const n = Number(v ?? 0);
+                        if (!Number.isFinite(n)) return "";
+                        return n === 0 ? "" : n.toFixed(0);
+                      }}
+                    />
+                  </Bar>
+
+                  <Line
+                    yAxisId="days"
+                    type="monotone"
+                    dataKey="rainyDaysScaled"
+                    name="Hari hujan/bulan"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          <div className="mt-2 text-[11px] text-slate-400">
+            Sumber rekap bulanan:{" "}
+            <b className="text-emerald-200">{monthlySource}</b>.
+          </div>
+        </ChartCard>
+      </section >
+
+      {/* FULLSCREEN LOADING SPINNER SAAT IMPORT */}
+      {
+        importing && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 backdrop-blur-2xl">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="flex flex-col items-center gap-4"
+            >
+              <div className="relative flex items-center justify-center">
+                {/* Lingkaran luar berputar */}
+                <div className="h-24 w-24 rounded-full border-2 border-emerald-400/25 border-t-emerald-200/95 animate-spin" />
+
+                {/* Logo di tengah lingkaran */}
+                <div className="absolute flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-emerald-100/80 bg-white/90 shadow-[0_18px_45px_rgba(6,40,18,0.8)] backdrop-blur-xl">
+                  <Image
+                    src="https://www.ptpn4.co.id/build/assets/Logo%20PTPN%20IV-CyWK9qsP.png"
+                    alt="PTPN 4"
+                    fill
+                    unoptimized
+                    className="object-contain p-1.5"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1 text-center">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-emerald-50/90">
+                  PTPN 4 • DIVISI TANAMAN
+                </p>
+                <p className="text-sm text-emerald-50/80">
+                  Mengimport data curah hujan...
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )
+      }
     </>
   );
 }

@@ -5,10 +5,12 @@ import {
   ImportPayloadSchema,
   ListDatesQuerySchema,
   SummaryQuerySchema,
+  MonthlyRecapQuerySchema,
   PutPayloadSchema,
   DeletePayloadSchema,
   RainSourceSchema,
 } from "@/server/modules/curah-hujan/curahHujan.schemas";
+
 import { ymdToUtcDate } from "@/server/modules/curah-hujan/curahHujan.excel";
 import * as service from "@/server/modules/curah-hujan/curahHujan.service";
 
@@ -78,6 +80,31 @@ export async function GET(req: Request) {
       const sumber = parsed.data.sumber ?? RainSourceSchema.parse(undefined);
       const dates = await service.listDates(parsed.data.kebunCode.trim(), sumber);
       return ok(dates);
+    }
+
+    // ✅ mode=monthlyRecap
+    if (mode === "monthlyRecap") {
+      const queryObj = {
+        mode: "monthlyRecap" as const,
+        year: url.searchParams.get("year") ?? "",
+        kebunCode: url.searchParams.get("kebunCode") ?? undefined,
+        sumber: url.searchParams.get("sumber") ?? undefined,
+      };
+
+      const parsed = MonthlyRecapQuerySchema.safeParse(queryObj);
+      if (!parsed.success) {
+        return fail(400, "Validasi gagal.", "VALIDATION_ERROR", parsed.error.flatten());
+      }
+
+      const sumber = parsed.data.sumber ?? RainSourceSchema.parse(undefined);
+
+      const items = await service.getMonthlyRecap({
+        year: parsed.data.year,
+        kebunCode: parsed.data.kebunCode?.trim() || undefined,
+        sumber,
+      });
+
+      return ok(items);
     }
 
     // normal summary

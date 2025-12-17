@@ -27,6 +27,16 @@ export const ListDatesQuerySchema = z.object({
   sumber: RainSourceSchema.optional(),
 });
 
+export const MonthlyRecapQuerySchema = z.object({
+  mode: z.literal("monthlyRecap"),
+  year: z
+    .string()
+    .regex(/^\d{4}$/, "year harus 4 digit, contoh: 2025.")
+    .transform((v) => Number(v)),
+  kebunCode: z.string().optional(), // kosong => total semua kebun
+  sumber: RainSourceSchema.optional(),
+});
+
 const DateYmd = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Format tanggal tidak valid. Pakai YYYY-MM-DD.");
