@@ -360,6 +360,111 @@ export default function CurahHujanSection() {
 
   const hasAnyKebun = kebunOptions.length > 0;
 
+  type MonthlyKebunTableRow = {
+    kebunCode: string;
+    kebunName: string;
+    months: MonthlyRecapItem[]; // selalu 12 item Jan–Des
+  };
+
+  const [monthlyTableRows, setMonthlyTableRows] = useState<MonthlyKebunTableRow[]>([]);
+  const [loadingMonthlyTable, setLoadingMonthlyTable] = useState(false);
+
+  const fetchMonthlyTableAllKebun = useCallback(async () => {
+    if (!hasAnyKebun) return;
+
+    setLoadingMonthlyTable(true);
+
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    try {
+      const base = rangeEnd || dailyDate || getTodayJakartaString();
+      const year = Number(String(base).slice(0, 4)) || new Date().getFullYear();
+
+      // Ambil rekap 12 bulan untuk tiap kebun (20 kebun) sesuai sumber yang dipilih
+      const tasks = kebunOptions.map(async (k) => {
+        const params = new URLSearchParams({
+          mode: "monthlyRecap",
+          year: String(year),
+          sumber: monthlySource,
+          kebunCode: k.code,
+        });
+
+        const res = await fetch(`/api/curah-hujan?${params.toString()}`, { signal });
+        if (!res.ok) {
+          // fallback: 12 bulan nol
+          return {
+            kebunCode: k.code,
+            kebunName: k.name,
+            months: MONTH_LABELS_ID.map((m, idx) => ({
+              month: idx + 1,
+              monthLabel: m,
+              totalMm: 0,
+              rainyDays: 0,
+            })),
+          } as MonthlyKebunTableRow;
+        }
+
+        const raw = await readJsonSafe(res);
+        const rows = unwrapApiData<
+          {
+            month?: number;
+            monthLabel?: string;
+            totalMm?: number | string | null;
+            rainyDays?: number | string | null;
+          }[]
+        >(raw);
+
+        const map = new Map<number, MonthlyRecapItem>();
+        for (const r of rows ?? []) {
+          const mo = Number(r.month ?? 0);
+          if (mo < 1 || mo > 12) continue;
+          map.set(mo, {
+            month: mo,
+            monthLabel: String(r.monthLabel ?? MONTH_LABELS_ID[mo - 1] ?? String(mo)),
+            totalMm: Number(r.totalMm ?? 0) || 0,
+            rainyDays: Number(r.rainyDays ?? 0) || 0,
+          });
+        }
+
+        const months = MONTH_LABELS_ID.map((m, idx) => {
+          const mo = idx + 1;
+          const found = map.get(mo);
+          return {
+            month: mo,
+            monthLabel: m,
+            totalMm: found?.totalMm ?? 0,
+            rainyDays: found?.rainyDays ?? 0,
+          };
+        });
+
+        return {
+          kebunCode: k.code,
+          kebunName: k.name,
+          months,
+        } as MonthlyKebunTableRow;
+      });
+
+      const results = await Promise.all(tasks);
+
+      // urutkan sesuai KEBUN_ORDER (kebunOptions sudah urut)
+      setMonthlyTableRows(results);
+    } catch (err) {
+      console.error("fetchMonthlyTableAllKebun error:", err);
+      setMonthlyTableRows([]);
+    } finally {
+      setLoadingMonthlyTable(false);
+    }
+
+    return () => controller.abort();
+  }, [hasAnyKebun, kebunOptions, monthlySource, rangeEnd, dailyDate]);
+
+  useEffect(() => {
+    if (!hasAnyKebun) return;
+    void fetchMonthlyTableAllKebun();
+  }, [fetchMonthlyTableAllKebun, hasAnyKebun]);
+
+
   // Wrapper chart rekap bulanan untuk di-export PDF
   const monthlyPdfWrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -458,25 +563,39 @@ export default function CurahHujanSection() {
                 });
               }
 
+              const tableContainer = wrapper.querySelector<HTMLDivElement>(
+                "[data-monthly-table-container='true']"
+              );
+
+              // PDF: hilangkan scroll supaya semua baris ikut tercapture
+              if (tableContainer) {
+                tableContainer.style.maxHeight = "none";
+                tableContainer.style.overflow = "visible";
+                tableContainer.style.border = "1px solid #E5E7EB";
+                tableContainer.style.backgroundColor = "#FFFFFF";
+              }
+
               // Paksa warna teks hitam untuk label SVG recharts (PDF saja)
               const forceStyle = doc.createElement("style");
               forceStyle.textContent = `
-              #curah-hujan-monthly-pdf-wrapper svg text,
-              #curah-hujan-monthly-pdf-wrapper svg tspan {
-                fill: #111827 !important;
-                color: #111827 !important;
-                opacity: 1 !important;
-              }
+             #curah-hujan-monthly-pdf-wrapper svg text,
+  #curah-hujan-monthly-pdf-wrapper svg tspan {
+    fill: #111827 !important;
+    color: #111827 !important;
+    opacity: 1 !important;
+  }
 
-              #curah-hujan-monthly-pdf-wrapper .recharts-text,
-              #curah-hujan-monthly-pdf-wrapper .recharts-cartesian-axis-tick-value,
-              #curah-hujan-monthly-pdf-wrapper .recharts-label,
-              #curah-hujan-monthly-pdf-wrapper .recharts-cartesian-axis-tick text,
-              #curah-hujan-monthly-pdf-wrapper .recharts-cartesian-axis-tick tspan {
-                fill: #111827 !important;
-                color: #111827 !important;
-                opacity: 1 !important;
-              }
+  /* TABEL PDF */
+  #curah-hujan-monthly-pdf-wrapper table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+  #curah-hujan-monthly-pdf-wrapper th,
+  #curah-hujan-monthly-pdf-wrapper td {
+    color: #111827 !important;
+    border: 1px solid #E5E7EB !important;
+    background: #FFFFFF !important;
+  }
             `;
               doc.head.appendChild(forceStyle);
             }
@@ -2174,9 +2293,10 @@ export default function CurahHujanSection() {
           <div
             ref={monthlyPdfWrapperRef}
             id="curah-hujan-monthly-pdf-wrapper"
-            className="h-[280px] w-full rounded-xl border border-emerald-500/20 bg-slate-950/40 p-2"
+            className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/40 p-2"
           >
-            <div data-monthly-chart-container="true" className="h-full w-full">
+            {/* ===== CHART ===== */}
+            <div data-monthly-chart-container="true" className="h-[280px] w-full">
               {!hasAnyKebun ? (
                 <div className="flex h-full items-center justify-center text-sm text-slate-400">
                   Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
@@ -2190,7 +2310,6 @@ export default function CurahHujanSection() {
                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                     <XAxis dataKey="monthLabel" tick={{ fontSize: 11, fill: "#E5E7EB" }} />
 
-                    {/* Y kiri: total mm */}
                     <YAxis
                       yAxisId="mm"
                       tick={{ fontSize: 11, fill: "#E5E7EB" }}
@@ -2204,15 +2323,14 @@ export default function CurahHujanSection() {
                       }}
                     />
 
-                    {/* Y kanan: rainy days */}
                     <YAxis
                       yAxisId="days"
                       orientation="right"
                       tick={{ fontSize: 11, fill: "#E5E7EB" }}
                       allowDecimals={false}
-                      domain={[0, "dataMax"]} // ✅ range sama dgn data scaled
+                      domain={[0, "dataMax"]}
                       tickFormatter={(v: number) => {
-                        const n = daysScale > 0 ? v / daysScale : 0; // ✅ daysScale kepakai -> no unused-vars
+                        const n = daysScale > 0 ? v / daysScale : 0;
                         return String(Math.round(n));
                       }}
                       label={{
@@ -2235,6 +2353,7 @@ export default function CurahHujanSection() {
                       strokeWidth={2}
                       dot={{ r: 3 }}
                     />
+
                     <Bar
                       yAxisId="mm"
                       dataKey="totalMm"
@@ -2259,11 +2378,77 @@ export default function CurahHujanSection() {
               )}
             </div>
 
-            <div className="mt-2 text-[11px] text-slate-400">
-              Sumber rekap bulanan:{" "}
-              <b className="text-emerald-200">{monthlySource}</b>.
+            {/* ===== TABEL (HARUS DI DALAM WRAPPER INI) ===== */}
+            <div className="mt-3 rounded-xl border border-emerald-500/20 bg-slate-950/30 p-2">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-emerald-200">
+                  Tabel Rekap Bulanan per Kebun (Jan–Des)
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  {loadingMonthlyTable ? "Memuat..." : `${monthlyTableRows.length} kebun`}
+                </span>
+              </div>
+
+              <div
+                data-monthly-table-container="true"
+                className="max-h-[320px] w-full overflow-auto rounded-lg border border-emerald-500/10 bg-slate-950/20"
+              >
+                {!hasAnyKebun ? (
+                  <div className="flex h-24 items-center justify-center text-xs text-slate-400">
+                    Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
+                  </div>
+                ) : loadingMonthlyTable ? (
+                  <div className="flex h-24 items-center justify-center text-xs text-slate-400">
+                    Memuat rekap bulanan per kebun...
+                  </div>
+                ) : (
+                  <table className="min-w-[1400px] w-full text-xs">
+                    <thead className="sticky top-0 bg-slate-900/90 backdrop-blur">
+                      <tr className="text-[11px] uppercase tracking-wide text-slate-300">
+                        <th rowSpan={2} className="px-3 py-2 text-left">Kebun</th>
+                        <th rowSpan={2} className="px-3 py-2 text-left">Nama Kebun</th>
+                        {MONTH_LABELS_ID.map((m) => (
+                          <th key={`h1-${m}`} colSpan={2} className="px-2 py-2 text-center">{m}</th>
+                        ))}
+                      </tr>
+                      <tr className="text-[10px] uppercase tracking-wide text-slate-400">
+                        {MONTH_LABELS_ID.map((m) => (
+                          <React.Fragment key={`h2-${m}`}>
+                            <th className="px-2 py-1.5 text-right">CH</th>
+                            <th className="px-2 py-1.5 text-right">HH</th>
+                          </React.Fragment>
+                        ))}
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {monthlyTableRows.map((r, idx) => (
+                        <tr
+                          key={`row-${r.kebunCode}`}
+                          className={`border-t border-emerald-500/10 ${idx % 2 === 0 ? "bg-slate-950/10" : "bg-slate-900/10"
+                            }`}
+                        >
+                          <td className="px-3 py-1.5 font-mono text-[11px] text-slate-100">{r.kebunCode}</td>
+                          <td className="px-3 py-1.5 text-[11px] text-slate-200">{r.kebunName}</td>
+
+                          {r.months.map((mo) => (
+                            <React.Fragment key={`${r.kebunCode}-${mo.month}`}>
+                              <td className="px-2 py-1.5 text-right font-mono text-[11px] text-slate-100">
+                                {Number(mo.totalMm ?? 0).toFixed(0)}
+                              </td>
+                              <td className="px-2 py-1.5 text-right font-mono text-[11px] text-slate-100">
+                                {Number(mo.rainyDays ?? 0)}
+                              </td>
+                            </React.Fragment>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                </div>
+              </div>
             </div>
-          </div>
         </ChartCard>
       </section >
 
