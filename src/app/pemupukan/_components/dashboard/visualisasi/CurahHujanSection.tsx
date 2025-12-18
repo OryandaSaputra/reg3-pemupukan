@@ -2027,7 +2027,7 @@ export default function CurahHujanSection() {
             >
               <div className="mb-1 flex shrink-0 items-center justify-between">
                 <span className="text-[11px] font-semibold text-emerald-200">
-                  Curah Hujan per Kebun – AWS (mm)
+                  Curah Hujan per Kebun – OMBRO (mm)
                 </span>
                 <span className="text-[10px] text-slate-400">
                   Harian {dailyDate} • Total {rangeStart} s/d {rangeEnd}
