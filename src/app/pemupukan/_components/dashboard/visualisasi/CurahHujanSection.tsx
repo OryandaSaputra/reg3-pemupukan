@@ -1930,9 +1930,9 @@ export default function CurahHujanSection() {
             {/* GRAFIK AWS */}
             <div
               data-chart-container="true"
-              className="h-[260px] w-full rounded-xl border border-emerald-500/20 bg-slate-950/60 p-2"
+              className="flex h-[320px] w-full flex-col rounded-xl border border-emerald-500/20 bg-slate-950/60 p-2"
             >
-              <div className="mb-1 flex items-center justify-between">
+              <div className="mb-1 flex shrink-0 items-center justify-between">
                 <span className="text-[11px] font-semibold text-emerald-200">
                   Curah Hujan per Kebun – AWS (mm)
                 </span>
@@ -1940,46 +1940,29 @@ export default function CurahHujanSection() {
                   Harian {dailyDate} • Total {rangeStart} s/d {rangeEnd}
                 </span>
               </div>
-              {loadingChart ? (
-                <div className="flex h-[210px] items-center justify-center text-sm text-slate-300">
-                  Memuat data curah hujan...
-                </div>
-              ) : !hasAnyKebun ? (
-                <div className="flex h-[210px] items-center justify-center text-center text-sm text-slate-400">
-                  Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
-                </div>
-              ) : (
+
+              <div className="min-h-0 flex-1">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={chartDataAws}
-                    margin={{ top: 10, right: 10, left: 0, bottom: 30 }}
+                    margin={{ top: 18, right: 10, left: 6, bottom: 48 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                     <XAxis
                       dataKey="kebunCode"
                       tick={{ fontSize: 11, fill: "#E5E7EB" }}
-                      angle={-20}
+                      angle={-25}
                       textAnchor="end"
-                      height={40}
+                      height={52}
                     />
                     <YAxis
                       allowDecimals={false}
                       tick={{ fontSize: 11, fill: "#E5E7EB" }}
-                      label={{
-                        value: "",
-                        angle: -90,
-                        position: "insideLeft",
-                        offset: 0,
-                        fill: "#E5E7EB",
-                        fontSize: 11,
-                      }}
                     />
-                    <Tooltip
-                      content={(props) => (
-                        <RainTooltip {...props} dailyDate={dailyDate} />
-                      )}
-                    />
+                    <Tooltip content={(props) => <RainTooltip {...props} dailyDate={dailyDate} />} />
                     <Legend
+                      verticalAlign="bottom"
+                      height={24}
                       wrapperStyle={{ fontSize: 11, color: "#E5E7EB" }}
                     />
 
@@ -1992,15 +1975,18 @@ export default function CurahHujanSection() {
                       <LabelList
                         dataKey="dailyMm"
                         position="top"
+                        offset={6}
                         className="fill-slate-100 text-[10px]"
+                        formatter={(v: unknown) => {
+                          const n = Number(v ?? 0);
+                          if (!Number.isFinite(n) || n === 0) return "";
+                          return n.toFixed(2);
+                        }}
                       />
                       {chartDataAws.map((item, idx) => {
                         const pair = getKebunColorPair(idx);
                         return (
-                          <Cell
-                            key={`${item.kebunCode}-aws-daily`}
-                            fill={pair.light}
-                          />
+                          <Cell key={`${item.kebunCode}-aws-daily`} fill={pair.light} />
                         );
                       })}
                     </Bar>
@@ -2014,76 +2000,62 @@ export default function CurahHujanSection() {
                       <LabelList
                         dataKey="mtdMm"
                         position="top"
+                        offset={6}
                         className="fill-slate-100 text-[10px]"
+                        formatter={(v: unknown) => {
+                          const n = Number(v ?? 0);
+                          if (!Number.isFinite(n) || n === 0) return "";
+                          return n.toFixed(2);
+                        }}
                       />
                       {chartDataAws.map((item, idx) => {
                         const pair = getKebunColorPair(idx);
                         return (
-                          <Cell
-                            key={`${item.kebunCode}-aws-mtd`}
-                            fill={pair.dark}
-                          />
+                          <Cell key={`${item.kebunCode}-aws-mtd`} fill={pair.dark} />
                         );
                       })}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
-              )}
+              </div>
             </div>
 
             {/* GRAFIK OMBROMETER */}
             <div
               data-chart-container="true"
-              className="h-[260px] w-full rounded-xl border border-emerald-500/20 bg-slate-950/60 p-2"
+              className="flex h-[320px] w-full flex-col rounded-xl border border-emerald-500/20 bg-slate-950/60 p-2"
             >
-              <div className="mb-1 flex items-center justify-between">
+              <div className="mb-1 flex shrink-0 items-center justify-between">
                 <span className="text-[11px] font-semibold text-emerald-200">
-                  Curah Hujan per Kebun – Ombrometer (mm)
+                  Curah Hujan per Kebun – AWS (mm)
                 </span>
                 <span className="text-[10px] text-slate-400">
                   Harian {dailyDate} • Total {rangeStart} s/d {rangeEnd}
                 </span>
               </div>
-              {loadingChart ? (
-                <div className="flex h-[210px] items-center justify-center text-sm text-slate-300">
-                  Memuat data curah hujan...
-                </div>
-              ) : !hasAnyKebun ? (
-                <div className="flex h-[210px] items-center justify-center text-center text-sm text-slate-400">
-                  Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
-                </div>
-              ) : (
+
+              <div className="min-h-0 flex-1">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={chartDataOmbro}
-                    margin={{ top: 10, right: 10, left: 0, bottom: 30 }}
+                    margin={{ top: 18, right: 10, left: 6, bottom: 48 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                     <XAxis
                       dataKey="kebunCode"
                       tick={{ fontSize: 11, fill: "#E5E7EB" }}
-                      angle={-20}
+                      angle={-25}
                       textAnchor="end"
-                      height={40}
+                      height={52}
                     />
                     <YAxis
                       allowDecimals={false}
                       tick={{ fontSize: 11, fill: "#E5E7EB" }}
-                      label={{
-                        value: "",
-                        angle: -90,
-                        position: "insideLeft",
-                        offset: 0,
-                        fill: "#E5E7EB",
-                        fontSize: 11,
-                      }}
                     />
-                    <Tooltip
-                      content={(props) => (
-                        <RainTooltip {...props} dailyDate={dailyDate} />
-                      )}
-                    />
+                    <Tooltip content={(props) => <RainTooltip {...props} dailyDate={dailyDate} />} />
                     <Legend
+                      verticalAlign="bottom"
+                      height={24}
                       wrapperStyle={{ fontSize: 11, color: "#E5E7EB" }}
                     />
 
@@ -2096,15 +2068,18 @@ export default function CurahHujanSection() {
                       <LabelList
                         dataKey="dailyMm"
                         position="top"
+                        offset={6}
                         className="fill-slate-100 text-[10px]"
+                        formatter={(v: unknown) => {
+                          const n = Number(v ?? 0);
+                          if (!Number.isFinite(n) || n === 0) return "";
+                          return n.toFixed(2);
+                        }}
                       />
                       {chartDataOmbro.map((item, idx) => {
                         const pair = getKebunColorPair(idx);
                         return (
-                          <Cell
-                            key={`${item.kebunCode}-ombro-daily`}
-                            fill={pair.light}
-                          />
+                          <Cell key={`${item.kebunCode}-ombro-daily`} fill={pair.light} />
                         );
                       })}
                     </Bar>
@@ -2118,123 +2093,25 @@ export default function CurahHujanSection() {
                       <LabelList
                         dataKey="mtdMm"
                         position="top"
+                        offset={6}
                         className="fill-slate-100 text-[10px]"
+                        formatter={(v: unknown) => {
+                          const n = Number(v ?? 0);
+                          if (!Number.isFinite(n) || n === 0) return "";
+                          return n.toFixed(2);
+                        }}
                       />
                       {chartDataOmbro.map((item, idx) => {
                         const pair = getKebunColorPair(idx);
                         return (
-                          <Cell
-                            key={`${item.kebunCode}-ombro-mtd`}
-                            fill={pair.dark}
-                          />
+                          <Cell key={`${item.kebunCode}-ombro-mtd`} fill={pair.dark} />
                         );
                       })}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-        </ChartCard>
-      </section>
-
-      {/* CARD TABEL DATA */}
-      <section className="mt-6">
-        <ChartCard
-          title="Data Curah Hujan per Kebun"
-          subtitle={`Tabel data untuk tanggal harian ${dailyDate} dan total periode ${rangeStart} s/d ${rangeEnd} (zona Asia/Jakarta). Anda dapat edit atau hapus data harian per kebun, dipisahkan per sumber AWS / Ombrometer.`}
-        >
-          {/* Pilih sumber untuk tabel (edit / hapus) */}
-          <div className="mt-1 mb-2 flex items-center justify-end gap-2 text-[11px] text-slate-300">
-            <span className="whitespace-nowrap">Sumber data tabel:</span>
-            <Select
-              value={tableSource}
-              onValueChange={(v) => setTableSource(v as RainSource)}
-            >
-              <SelectTrigger className="h-7 w-[140px] border border-emerald-500/60 bg-slate-900 text-[11px] text-slate-100">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
-                <SelectItem value="AWS">AWS</SelectItem>
-                <SelectItem value="OMBROMETER">Ombrometer</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="mt-1 max-h-[320px] w-full overflow-auto rounded-xl border border-emerald-500/20 bg-slate-950/40">
-            {!hasAnyKebun ? (
-              <div className="flex h-32 items-center justify-center text-xs text-slate-400">
-                Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
               </div>
-            ) : (
-              <table className="min-w-full text-xs">
-                <thead className="sticky top-0 bg-slate-900/80 backdrop-blur">
-                  <tr className="text-[11px] uppercase tracking-wide text-slate-300">
-                    <th className="px-3 py-2 text-left">Kebun</th>
-                    <th className="px-3 py-2 text-left">Nama Kebun</th>
-                    <th className="px-3 py-2 text-left">Tanggal Harian</th>
-                    <th className="px-3 py-2 text-left">Sumber</th>
-                    <th className="px-3 py-2 text-right">Harian (mm)</th>
-                    <th className="px-3 py-2 text-right">
-                      Total Periode (mm)
-                    </th>
-                    <th className="px-3 py-2 text-center">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tableData.map((row, idx) => (
-                    <tr
-                      key={`${row.kebunCode}-${idx}`}
-                      className={`border-t border-emerald-500/10 ${idx % 2 === 0
-                        ? "bg-slate-950/20"
-                        : "bg-slate-900/10"
-                        }`}
-                    >
-                      <td className="px-3 py-1.5 font-mono text-[11px] text-slate-100">
-                        {row.kebunCode}
-                      </td>
-                      <td className="px-3 py-1.5 text-[11px] text-slate-200">
-                        {row.kebunName}
-                      </td>
-                      <td className="px-3 py-1.5 text-[11px] text-slate-300">
-                        <code>{dailyDate}</code>
-                      </td>
-                      <td className="px-3 py-1.5 text-[11px] text-emerald-200">
-                        {tableSource}
-                      </td>
-                      <td className="px-3 py-1.5 text-right font-mono text-[11px] text-slate-100">
-                        {row.dailyMm.toFixed(2)}
-                      </td>
-                      <td className="px-3 py-1.5 text-right font-mono text-[11px] text-slate-100">
-                        {row.mtdMm.toFixed(2)}
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px]"
-                            onClick={() => void handleEditRow(row)}
-                          >
-                            Tambah Data Harian
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px] border-red-500/60 text-red-300 hover:bg-red-500/10"
-                            onClick={() => void handleDeleteRow(row)}
-                          >
-                            Hapus
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+            </div>
           </div>
         </ChartCard>
       </section>
@@ -2389,6 +2266,107 @@ export default function CurahHujanSection() {
           </div>
         </ChartCard>
       </section >
+
+      {/* CARD TABEL DATA */}
+      <section className="mt-6">
+        <ChartCard
+          title="Data Curah Hujan per Kebun"
+          subtitle={`Tabel data untuk tanggal harian ${dailyDate} dan total periode ${rangeStart} s/d ${rangeEnd} (zona Asia/Jakarta). Anda dapat edit atau hapus data harian per kebun, dipisahkan per sumber AWS / Ombrometer.`}
+        >
+          {/* Pilih sumber untuk tabel (edit / hapus) */}
+          <div className="mt-1 mb-2 flex items-center justify-end gap-2 text-[11px] text-slate-300">
+            <span className="whitespace-nowrap">Sumber data tabel:</span>
+            <Select
+              value={tableSource}
+              onValueChange={(v) => setTableSource(v as RainSource)}
+            >
+              <SelectTrigger className="h-7 w-[140px] border border-emerald-500/60 bg-slate-900 text-[11px] text-slate-100">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="border border-emerald-500/60 bg-slate-950 text-xs text-slate-100 shadow-xl">
+                <SelectItem value="AWS">AWS</SelectItem>
+                <SelectItem value="OMBROMETER">Ombrometer</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="mt-1 max-h-[320px] w-full overflow-auto rounded-xl border border-emerald-500/20 bg-slate-950/40">
+            {!hasAnyKebun ? (
+              <div className="flex h-32 items-center justify-center text-xs text-slate-400">
+                Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
+              </div>
+            ) : (
+              <table className="min-w-full text-xs">
+                <thead className="sticky top-0 bg-slate-900/80 backdrop-blur">
+                  <tr className="text-[11px] uppercase tracking-wide text-slate-300">
+                    <th className="px-3 py-2 text-left">Kebun</th>
+                    <th className="px-3 py-2 text-left">Nama Kebun</th>
+                    <th className="px-3 py-2 text-left">Tanggal Harian</th>
+                    <th className="px-3 py-2 text-left">Sumber</th>
+                    <th className="px-3 py-2 text-right">Harian (mm)</th>
+                    <th className="px-3 py-2 text-right">
+                      Total Periode (mm)
+                    </th>
+                    <th className="px-3 py-2 text-center">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableData.map((row, idx) => (
+                    <tr
+                      key={`${row.kebunCode}-${idx}`}
+                      className={`border-t border-emerald-500/10 ${idx % 2 === 0
+                        ? "bg-slate-950/20"
+                        : "bg-slate-900/10"
+                        }`}
+                    >
+                      <td className="px-3 py-1.5 font-mono text-[11px] text-slate-100">
+                        {row.kebunCode}
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] text-slate-200">
+                        {row.kebunName}
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] text-slate-300">
+                        <code>{dailyDate}</code>
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] text-emerald-200">
+                        {tableSource}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[11px] text-slate-100">
+                        {row.dailyMm.toFixed(2)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[11px] text-slate-100">
+                        {row.mtdMm.toFixed(2)}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            onClick={() => void handleEditRow(row)}
+                          >
+                            Tambah Data Harian
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px] border-red-500/60 text-red-300 hover:bg-red-500/10"
+                            onClick={() => void handleDeleteRow(row)}
+                          >
+                            Hapus
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </ChartCard>
+      </section>
 
       {/* FULLSCREEN LOADING SPINNER SAAT IMPORT */}
       {
