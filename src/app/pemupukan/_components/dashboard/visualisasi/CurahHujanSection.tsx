@@ -360,6 +360,239 @@ export default function CurahHujanSection() {
 
   const hasAnyKebun = kebunOptions.length > 0;
 
+  // Wrapper chart rekap bulanan untuk di-export PDF
+  const monthlyPdfWrapperRef = useRef<HTMLDivElement | null>(null);
+
+  const handleExportMonthlyPdf = useCallback(async () => {
+    if (!monthlyPdfWrapperRef.current) {
+      await glassSwal.fire({
+        icon: "info",
+        title: "Grafik belum siap",
+        html: `
+        <div class="text-xs text-slate-200">
+          Grafik rekap bulanan belum dapat diexport. Pastikan chart sudah tampil.
+        </div>
+      `,
+      });
+      return;
+    }
+
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+
+      const canvas = await html2canvas(monthlyPdfWrapperRef.current, {
+        scale: 3,
+        backgroundColor: "#F3F4F6",
+        useCORS: true,
+        onclone: (doc: Document) => {
+          try {
+            const wrapper = doc.getElementById(
+              "curah-hujan-monthly-pdf-wrapper"
+            ) as HTMLDivElement | null;
+
+            if (wrapper) {
+              wrapper.style.backgroundColor = "#FFFFFF";
+              wrapper.style.padding = "22px";
+              wrapper.style.boxSizing = "border-box";
+              wrapper.style.borderRadius = "18px";
+              wrapper.style.border = "1px solid #E5E7EB";
+              wrapper.style.maxWidth = "1100px";
+              wrapper.style.margin = "0 auto";
+              wrapper.style.display = "block";
+
+              const chartContainer = wrapper.querySelector<HTMLDivElement>(
+                "[data-monthly-chart-container='true']"
+              );
+
+              if (chartContainer) {
+                chartContainer.style.backgroundColor = "#FFFFFF";
+                chartContainer.style.border = "1px solid #E5E7EB";
+                chartContainer.style.borderRadius = "14px";
+                chartContainer.style.padding = "14px";
+                chartContainer.style.height = "360px";
+                chartContainer.style.boxSizing = "border-box";
+
+                const headerRow = chartContainer.querySelector<HTMLDivElement>(
+                  "div.mb-1.flex.items-center.justify-between"
+                );
+
+                if (headerRow) {
+                  headerRow.style.marginBottom = "12px";
+                  headerRow.style.paddingBottom = "6px";
+                  headerRow.style.borderBottom = "1px solid #E5E7EB";
+
+                  const leftTitle =
+                    headerRow.querySelector<HTMLSpanElement>(
+                      "span.text-\\[11px\\].font-semibold"
+                    );
+
+                  if (leftTitle) {
+                    leftTitle.textContent = "Rekap Curah Hujan per Bulan";
+                    leftTitle.style.color = "#111827";
+                    leftTitle.style.fontSize = "13px";
+                    leftTitle.style.fontWeight = "700";
+                  }
+
+                  const rightMeta =
+                    headerRow.querySelector<HTMLSpanElement>(
+                      "span.text-\\[10px\\]"
+                    );
+                  if (rightMeta) {
+                    rightMeta.textContent = "";
+                    rightMeta.style.display = "none";
+                  }
+                }
+
+                // Hapus legend (PDF saja)
+                const legends = chartContainer.querySelectorAll<HTMLElement>(
+                  ".recharts-legend-wrapper"
+                );
+                legends.forEach((lg) => {
+                  lg.style.display = "none";
+                  lg.style.visibility = "hidden";
+                  lg.style.height = "0";
+                  lg.style.overflow = "hidden";
+                });
+              }
+
+              // Paksa warna teks hitam untuk label SVG recharts (PDF saja)
+              const forceStyle = doc.createElement("style");
+              forceStyle.textContent = `
+              #curah-hujan-monthly-pdf-wrapper svg text,
+              #curah-hujan-monthly-pdf-wrapper svg tspan {
+                fill: #111827 !important;
+                color: #111827 !important;
+                opacity: 1 !important;
+              }
+
+              #curah-hujan-monthly-pdf-wrapper .recharts-text,
+              #curah-hujan-monthly-pdf-wrapper .recharts-cartesian-axis-tick-value,
+              #curah-hujan-monthly-pdf-wrapper .recharts-label,
+              #curah-hujan-monthly-pdf-wrapper .recharts-cartesian-axis-tick text,
+              #curah-hujan-monthly-pdf-wrapper .recharts-cartesian-axis-tick tspan {
+                fill: #111827 !important;
+                color: #111827 !important;
+                opacity: 1 !important;
+              }
+            `;
+              doc.head.appendChild(forceStyle);
+            }
+
+            // Hapus semua stylesheet (tailwind/next) supaya html2canvas aman dari oklab/oklch
+            const styleNodes = doc.querySelectorAll(
+              "style:not([data-keep-pdf='1']), link[rel='stylesheet']"
+            );
+            styleNodes.forEach((node) => {
+              if (node.tagName.toLowerCase() === "style") {
+                const s = node as HTMLStyleElement;
+                const txt = s.textContent || "";
+                if (txt.includes("#curah-hujan-monthly-pdf-wrapper svg text")) return;
+              }
+              node.parentNode?.removeChild(node);
+            });
+
+            // Force via attribute juga (jaga-jaga)
+            const wrapper2 = doc.getElementById("curah-hujan-monthly-pdf-wrapper");
+            if (wrapper2) {
+              const texts = wrapper2.querySelectorAll<SVGTextElement>("svg text");
+              texts.forEach((t) => {
+                t.setAttribute("fill", "#111827");
+                t.setAttribute("opacity", "1");
+                t.style.fill = "#111827";
+                t.style.opacity = "1";
+              });
+
+              const tspans = wrapper2.querySelectorAll<SVGTSpanElement>("svg tspan");
+              tspans.forEach((ts) => {
+                ts.setAttribute("fill", "#111827");
+                ts.setAttribute("opacity", "1");
+                ts.style.fill = "#111827";
+                ts.style.opacity = "1";
+              });
+            }
+          } catch (err) {
+            console.warn("html2canvas onclone cleanup failed:", err);
+          }
+        },
+      });
+
+      const base = rangeEnd || dailyDate || getTodayJakartaString();
+      const year = String(base).slice(0, 4) || String(new Date().getFullYear());
+
+      const kebunLabelPdf =
+        monthlyKebun
+          ? `${monthlyKebun} — ${KEBUN_LABEL[monthlyKebun] ?? monthlyKebun}`
+          : "Total 20 Kebun";
+
+      const pageTitle = "Rekap Curah Hujan per Bulan";
+      const pageSubtitle = `Tahun ${year} • ${kebunLabelPdf} • Sumber ${monthlySource}`;
+      const fileName = `rekap-curah-hujan-bulanan-${year}-${monthlyKebun || "all"}-${monthlySource}.pdf`;
+
+      const maxBytes = 1024 * 1024; // 1 MB
+      const qualitySteps = [0.9, 0.7, 0.5, 0.35];
+
+      for (let i = 0; i < qualitySteps.length; i += 1) {
+        const q = qualitySteps[i];
+        const imgData = canvas.toDataURL("image/jpeg", q);
+
+        const pdf = new jsPDF("landscape", "pt", "a4");
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+
+        const marginSide = 20;
+        const chartTopY = 65;
+        const chartBottomMargin = 24;
+        const availableHeight = pageHeight - chartTopY - chartBottomMargin;
+
+        let imgWidth = pageWidth - marginSide * 2;
+        let imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        if (imgHeight > availableHeight) {
+          const ratio = availableHeight / imgHeight;
+          imgHeight = availableHeight;
+          imgWidth *= ratio;
+        }
+
+        const imgX = (pageWidth - imgWidth) / 2;
+        const imgY = chartTopY;
+
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(16);
+        pdf.text(pageTitle, pageWidth / 2, 26, { align: "center" });
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(11);
+        pdf.text(pageSubtitle, pageWidth / 2, 44, { align: "center" });
+
+        pdf.addImage(imgData, "JPEG", imgX, imgY, imgWidth, imgHeight, "", "FAST");
+
+        const blob = pdf.output("blob") as Blob;
+        const sizeOk = blob.size <= maxBytes || i === qualitySteps.length - 1;
+
+        if (sizeOk) {
+          pdf.save(fileName);
+          break;
+        }
+      }
+    } catch (err) {
+      console.error("Export PDF rekap bulanan error:", err);
+      await glassSwal.fire({
+        icon: "error",
+        title: "Gagal export PDF",
+        html: `
+        <div class="text-xs text-slate-200">
+          Terjadi kesalahan saat membuat file PDF.<br/>
+          (Detail: ${err instanceof Error ? err.message : "unknown error"})
+        </div>
+      `,
+      });
+    }
+  }, [dailyDate, rangeEnd, monthlyKebun, monthlySource]);
+
+
   /**
    * Ambil data curah hujan untuk 1 sumber (AWS / OMBROMETER):
    * - dailyDate: harian di tanggal ini (untuk bar daily)
@@ -2053,100 +2286,106 @@ export default function CurahHujanSection() {
               size="sm"
               variant="outline"
               className="h-8 px-3 text-[11px]"
-              onClick={() => void fetchMonthlyRecap()}
+              onClick={handleExportMonthlyPdf}
               disabled={loadingMonthly || !hasAnyKebun}
             >
-              {loadingMonthly ? "Memuat..." : "Refresh"}
+              Export PDF
             </Button>
+
           </div>
 
-          <div className="h-[280px] w-full rounded-xl border border-emerald-500/20 bg-slate-950/40 p-2">
-            {!hasAnyKebun ? (
-              <div className="flex h-full items-center justify-center text-sm text-slate-400">
-                Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
-                  data={monthlyDataScaled}
-                  margin={{ top: 10, right: 18, left: 0, bottom: 10 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                  <XAxis dataKey="monthLabel" tick={{ fontSize: 11, fill: "#E5E7EB" }} />
-
-                  {/* Y kiri: total mm */}
-                  <YAxis
-                    yAxisId="mm"
-                    tick={{ fontSize: 11, fill: "#E5E7EB" }}
-                    allowDecimals={false}
-                    label={{
-                      value: "Total mm/bulan",
-                      angle: -90,
-                      position: "insideLeft",
-                      fill: "#E5E7EB",
-                      fontSize: 11,
-                    }}
-                  />
-
-                  {/* Y kanan: rainy days */}
-                  <YAxis
-                    yAxisId="days"
-                    orientation="right"
-                    tick={{ fontSize: 11, fill: "#E5E7EB" }}
-                    allowDecimals={false}
-                    domain={[0, "dataMax"]} // ✅ range sama dgn data scaled
-                    tickFormatter={(v: number) => {
-                      const n = daysScale > 0 ? v / daysScale : 0; // ✅ daysScale kepakai -> no unused-vars
-                      return String(Math.round(n));
-                    }}
-                    label={{
-                      value: "Hari hujan/bulan",
-                      angle: -90,
-                      position: "insideRight",
-                      fill: "#E5E7EB",
-                      fontSize: 11,
-                    }}
-                  />
-
-                  <Tooltip content={(props) => <MonthlyTooltip {...props} />} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: "#E5E7EB" }} />
-
-                  <Bar
-                    yAxisId="mm"
-                    dataKey="totalMm"
-                    name="Total mm/bulan"
-                    barSize={18}
-                    radius={[8, 8, 0, 0]}
-                    fill="#34D399"
+          <div
+            ref={monthlyPdfWrapperRef}
+            id="curah-hujan-monthly-pdf-wrapper"
+            className="h-[280px] w-full rounded-xl border border-emerald-500/20 bg-slate-950/40 p-2"
+          >
+            <div data-monthly-chart-container="true" className="h-full w-full">
+              {!hasAnyKebun ? (
+                <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                  Daftar kebun belum dikonfigurasi di KEBUN_LABEL.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart
+                    data={monthlyDataScaled}
+                    margin={{ top: 10, right: 18, left: 0, bottom: 10 }}
                   >
-                    <LabelList
-                      dataKey="totalMm"
-                      position="top"
-                      className="fill-slate-100 text-[10px]"
-                      formatter={(v: unknown) => {
-                        const n = Number(v ?? 0);
-                        if (!Number.isFinite(n)) return "";
-                        return n === 0 ? "" : n.toFixed(0);
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                    <XAxis dataKey="monthLabel" tick={{ fontSize: 11, fill: "#E5E7EB" }} />
+
+                    {/* Y kiri: total mm */}
+                    <YAxis
+                      yAxisId="mm"
+                      tick={{ fontSize: 11, fill: "#E5E7EB" }}
+                      allowDecimals={false}
+                      label={{
+                        value: "Total mm/bulan",
+                        angle: -90,
+                        position: "insideLeft",
+                        fill: "#E5E7EB",
+                        fontSize: 11,
                       }}
                     />
-                  </Bar>
 
-                  <Line
-                    yAxisId="days"
-                    type="monotone"
-                    dataKey="rainyDaysScaled"
-                    name="Hari hujan/bulan"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+                    {/* Y kanan: rainy days */}
+                    <YAxis
+                      yAxisId="days"
+                      orientation="right"
+                      tick={{ fontSize: 11, fill: "#E5E7EB" }}
+                      allowDecimals={false}
+                      domain={[0, "dataMax"]} // ✅ range sama dgn data scaled
+                      tickFormatter={(v: number) => {
+                        const n = daysScale > 0 ? v / daysScale : 0; // ✅ daysScale kepakai -> no unused-vars
+                        return String(Math.round(n));
+                      }}
+                      label={{
+                        value: "Hari hujan/bulan",
+                        angle: -90,
+                        position: "insideRight",
+                        fill: "#E5E7EB",
+                        fontSize: 11,
+                      }}
+                    />
 
-          <div className="mt-2 text-[11px] text-slate-400">
-            Sumber rekap bulanan:{" "}
-            <b className="text-emerald-200">{monthlySource}</b>.
+                    <Tooltip content={(props) => <MonthlyTooltip {...props} />} />
+                    <Legend wrapperStyle={{ fontSize: 11, color: "#E5E7EB" }} />
+
+                    <Line
+                      yAxisId="days"
+                      type="monotone"
+                      dataKey="rainyDaysScaled"
+                      name="Hari hujan/bulan"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                    />
+                    <Bar
+                      yAxisId="mm"
+                      dataKey="totalMm"
+                      name="Total mm/bulan"
+                      barSize={18}
+                      radius={[8, 8, 0, 0]}
+                      fill="#34D399"
+                    >
+                      <LabelList
+                        dataKey="totalMm"
+                        position="top"
+                        className="fill-slate-100 text-[10px]"
+                        formatter={(v: unknown) => {
+                          const n = Number(v ?? 0);
+                          if (!Number.isFinite(n)) return "";
+                          return n === 0 ? "" : n.toFixed(0);
+                        }}
+                      />
+                    </Bar>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            <div className="mt-2 text-[11px] text-slate-400">
+              Sumber rekap bulanan:{" "}
+              <b className="text-emerald-200">{monthlySource}</b>.
+            </div>
           </div>
         </ChartCard>
       </section >
