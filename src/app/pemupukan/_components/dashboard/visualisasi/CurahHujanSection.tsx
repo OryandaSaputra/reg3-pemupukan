@@ -188,33 +188,38 @@ const RainTooltip: React.FC<RainTooltipProps> = ({
 type MonthlyTooltipProps = {
   active?: boolean;
   payload?: { payload: MonthlyRecapItem }[];
+  isAvgMode?: boolean; // ✅ true saat default 20 kebun
 };
 
-const MonthlyTooltip: React.FC<MonthlyTooltipProps> = ({ active, payload }) => {
+const MonthlyTooltip: React.FC<MonthlyTooltipProps> = ({ active, payload, isAvgMode }) => {
   if (!active || !payload?.length) return null;
   const item = payload[0]?.payload as MonthlyRecapItem;
   if (!item) return null;
 
+  const hhRaw = Number(item.rainyDays ?? 0);
+  const hhShown = isAvgMode ? Math.round(hhRaw) : hhRaw; // ✅ samakan dengan tabel saat 20 kebun
+
   return (
-    <div className="rounded-xl border border-emerald-500/30 bg-slate-950/80 px-3 py-2 text-xs text-slate-50 shadow-lg backdrop-blur">
-      <div className="font-semibold">Bulan {item.monthLabel}</div>
-      <div className="mt-1 space-y-0.5 text-[11px] text-slate-300">
+    <div className="rounded-xl border border-emerald-500/30 bg-slate-950/80 px-3 py-2 text-xs text-slate-100 shadow-xl backdrop-blur">
+      <div className="font-semibold text-emerald-200">{item.monthLabel}</div>
+      <div className="mt-1 space-y-0.5">
         <div>
-          Total mm:{" "}
+          Curah hujan:{" "}
           <span className="font-mono font-semibold">
-            {Number(item.totalMm ?? 0).toFixed(2)}
+            {Number(item.totalMm ?? 0).toFixed(0)} mm
           </span>
         </div>
         <div>
           Hari hujan:{" "}
           <span className="font-mono font-semibold">
-            {Number(item.rainyDays ?? 0)}
+            {hhShown}
           </span>
         </div>
       </div>
     </div>
   );
 };
+
 
 /** Normalisasi nama header supaya kebal spasi, simbol, dan kapitalisasi */
 function normalizeHeaderName(s: string): string {
@@ -368,6 +373,43 @@ export default function CurahHujanSection() {
 
   const [monthlyTableRows, setMonthlyTableRows] = useState<MonthlyKebunTableRow[]>([]);
   const [loadingMonthlyTable, setLoadingMonthlyTable] = useState(false);
+
+  // ✅ Rata-rata Jan–Des dari seluruh kebun (dipakai: chart default 20 kebun + row rata-rata tabel)
+  const monthlyTableAvgMonths = useMemo<MonthlyRecapItem[] | null>(() => {
+    if (!monthlyTableRows.length) return null;
+
+    const divisor = Math.max(1, monthlyTableRows.length); // biasanya 20
+
+    return MONTH_LABELS_ID.map((label, idx) => {
+      const mo = idx + 1;
+      let sumMm = 0;
+      let sumDays = 0;
+
+      for (const r of monthlyTableRows) {
+        const item = r.months[idx];
+        sumMm += Number(item?.totalMm ?? 0) || 0;
+        sumDays += Number(item?.rainyDays ?? 0) || 0;
+      }
+
+      return {
+        month: mo,
+        monthLabel: label,
+        totalMm: sumMm / divisor,
+        rainyDays: sumDays / divisor,
+      };
+    });
+  }, [monthlyTableRows]);
+
+  // ✅ Row tambahan: Rata-rata (Jan–Des)
+  const monthlyTableAvgRow = useMemo(() => {
+    if (!monthlyTableAvgMonths) return null;
+
+    return {
+      kebunCode: "AVG",
+      kebunName: "Rata-rata",
+      months: monthlyTableAvgMonths,
+    };
+  }, [monthlyTableAvgMonths]);
 
   const fetchMonthlyTableAllKebun = useCallback(async () => {
     if (!hasAnyKebun) return;
@@ -839,23 +881,32 @@ export default function CurahHujanSection() {
   }, [selectedKebun]);
 
   // ====================[ FETCH REKAP BULANAN ]====================
+  // ====================[ FETCH REKAP BULANAN ]====================
   const fetchMonthlyRecap = useCallback(async () => {
     setLoadingMonthly(true);
     try {
+      // ✅ Default "Total 20 Kebun": gunakan rata-rata dari tabel per kebun
+      // Supaya perhitungan "hari hujan" di chart = sama dengan tabel (avg per kebun),
+      // bukan "tanggal unik hujan" lintas kebun dari backend.
+      if (!monthlyKebun && monthlyTableAvgMonths) {
+        setMonthlyData(monthlyTableAvgMonths);
+        return;
+      }
+
       const base = rangeEnd || dailyDate || getTodayJakartaString();
       const year = Number(String(base).slice(0, 4)) || new Date().getFullYear();
 
       const params = new URLSearchParams({
         mode: "monthlyRecap",
         year: String(year),
-        sumber: monthlySource, // ✅
+        sumber: monthlySource,
       });
 
-      if (monthlyKebun) params.set("kebunCode", monthlyKebun); // ✅
+      // ✅ kalau pilih kebun tertentu, tetap kirim kebunCode
+      if (monthlyKebun) params.set("kebunCode", monthlyKebun);
 
       const res = await fetch(`/api/curah-hujan?${params.toString()}`);
       if (!res.ok) {
-        // backend belum siap -> fallback aman (tetap 12 bulan)
         setMonthlyData(
           MONTH_LABELS_ID.map((m, idx) => ({
             month: idx + 1,
@@ -868,14 +919,12 @@ export default function CurahHujanSection() {
       }
 
       const raw = await readJsonSafe(res);
-      const rows = unwrapApiData<
-        {
-          month?: number;
-          monthLabel?: string;
-          totalMm?: number | string | null;
-          rainyDays?: number | string | null;
-        }[]
-      >(raw);
+      const rows = unwrapApiData<{
+        month?: number;
+        monthLabel?: string;
+        totalMm?: number | string | null;
+        rainyDays?: number | string | null;
+      }[]>(raw);
 
       const map = new Map<number, MonthlyRecapItem>();
       for (const r of rows ?? []) {
@@ -890,24 +939,26 @@ export default function CurahHujanSection() {
       }
 
       // pastikan output selalu 12 bulan Jan–Des
-      setMonthlyData(
-        MONTH_LABELS_ID.map((m, idx) => {
-          const mo = idx + 1;
-          const found = map.get(mo);
-          return {
-            month: mo,
-            monthLabel: m,
-            totalMm: found?.totalMm ?? 0,
-            rainyDays: found?.rainyDays ?? 0,
-          };
-        })
-      );
+      const result: MonthlyRecapItem[] = MONTH_LABELS_ID.map((m, idx) => {
+        const mo = idx + 1;
+        const found = map.get(mo);
+        return {
+          month: mo,
+          monthLabel: m,
+          totalMm: found?.totalMm ?? 0,
+          rainyDays: found?.rainyDays ?? 0,
+        };
+      });
+
+      // Jika pilih kebun tertentu, data backend sudah final
+      setMonthlyData(result);
     } catch (err) {
       console.error("fetchMonthlyRecap error:", err);
     } finally {
       setLoadingMonthly(false);
     }
-  }, [rangeEnd, dailyDate, monthlyKebun, monthlySource]);
+  }, [rangeEnd, dailyDate, monthlyKebun, monthlySource, monthlyTableAvgMonths]);
+
 
   useEffect(() => {
     if (!hasAnyKebun) return;
@@ -2099,7 +2150,7 @@ export default function CurahHujanSection() {
                         formatter={(v: unknown) => {
                           const n = Number(v ?? 0);
                           if (!Number.isFinite(n) || n === 0) return "";
-                          return n.toFixed(2);
+                          return n.toFixed(0);
                         }}
                       />
                       {chartDataAws.map((item, idx) => {
@@ -2124,7 +2175,7 @@ export default function CurahHujanSection() {
                         formatter={(v: unknown) => {
                           const n = Number(v ?? 0);
                           if (!Number.isFinite(n) || n === 0) return "";
-                          return n.toFixed(2);
+                          return n.toFixed(0);
                         }}
                       />
                       {chartDataAws.map((item, idx) => {
@@ -2192,7 +2243,7 @@ export default function CurahHujanSection() {
                         formatter={(v: unknown) => {
                           const n = Number(v ?? 0);
                           if (!Number.isFinite(n) || n === 0) return "";
-                          return n.toFixed(2);
+                          return n.toFixed(0);
                         }}
                       />
                       {chartDataOmbro.map((item, idx) => {
@@ -2217,7 +2268,7 @@ export default function CurahHujanSection() {
                         formatter={(v: unknown) => {
                           const n = Number(v ?? 0);
                           if (!Number.isFinite(n) || n === 0) return "";
-                          return n.toFixed(2);
+                          return n.toFixed(0);
                         }}
                       />
                       {chartDataOmbro.map((item, idx) => {
@@ -2342,7 +2393,7 @@ export default function CurahHujanSection() {
                       }}
                     />
 
-                    <Tooltip content={(props) => <MonthlyTooltip {...props} />} />
+                    <Tooltip content={(props) => <MonthlyTooltip {...props} isAvgMode={!monthlyKebun} />} />
                     <Legend wrapperStyle={{ fontSize: 11, color: "#E5E7EB" }} />
 
                     <Line
@@ -2443,12 +2494,35 @@ export default function CurahHujanSection() {
                           ))}
                         </tr>
                       ))}
+
+                      {/* ✅ Row tambahan: Rata-rata */}
+                      {monthlyTableAvgRow ? (
+                        <tr className="border-t border-emerald-500/25 bg-emerald-500/10">
+                          <td className="px-3 py-1.5 font-mono text-[11px] font-semibold text-emerald-100">
+                            {monthlyTableAvgRow.kebunCode}
+                          </td>
+                          <td className="px-3 py-1.5 text-[11px] font-semibold text-emerald-100">
+                            {monthlyTableAvgRow.kebunName}
+                          </td>
+
+                          {monthlyTableAvgRow.months.map((mo) => (
+                            <React.Fragment key={`avg-${mo.month}`}>
+                              <td className="px-2 py-1.5 text-right font-mono text-[11px] font-semibold text-emerald-100">
+                                {Number(mo.totalMm ?? 0).toFixed(0)}
+                              </td>
+                              <td className="px-2 py-1.5 text-right font-mono text-[11px] font-semibold text-emerald-100">
+                                {Math.round(Number(mo.rainyDays ?? 0))}
+                              </td>
+                            </React.Fragment>
+                          ))}
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
                 )}
-                </div>
               </div>
             </div>
+          </div>
         </ChartCard>
       </section >
 
@@ -2517,10 +2591,10 @@ export default function CurahHujanSection() {
                         {tableSource}
                       </td>
                       <td className="px-3 py-1.5 text-right font-mono text-[11px] text-slate-100">
-                        {row.dailyMm.toFixed(2)}
+                        {row.dailyMm.toFixed(0)}
                       </td>
                       <td className="px-3 py-1.5 text-right font-mono text-[11px] text-slate-100">
-                        {row.mtdMm.toFixed(2)}
+                        {row.mtdMm.toFixed(0)}
                       </td>
                       <td className="px-3 py-1.5">
                         <div className="flex items-center justify-center gap-1.5">
