@@ -530,214 +530,352 @@ export default function CurahHujanSection() {
         import("jspdf"),
       ]);
 
-      const canvas = await html2canvas(monthlyPdfWrapperRef.current, {
-        scale: 3,
-        backgroundColor: "#F3F4F6",
-        useCORS: true,
-        onclone: (doc: Document) => {
-          try {
-            const wrapper = doc.getElementById(
-              "curah-hujan-monthly-pdf-wrapper"
-            ) as HTMLDivElement | null;
+      // Helper: render wrapper yang sama, tapi di clone kita bisa hide chart/tabel sesuai kebutuhan
+      async function renderMonthlyWrapper(mode: "CHART" | "TABLE") {
+        if (!monthlyPdfWrapperRef.current) throw new Error("Wrapper tidak ditemukan");
 
-            if (wrapper) {
-              wrapper.style.backgroundColor = "#FFFFFF";
-              wrapper.style.padding = "22px";
-              wrapper.style.boxSizing = "border-box";
-              wrapper.style.borderRadius = "18px";
-              wrapper.style.border = "1px solid #E5E7EB";
-              wrapper.style.maxWidth = "1100px";
-              wrapper.style.margin = "0 auto";
-              wrapper.style.display = "block";
+        return html2canvas(monthlyPdfWrapperRef.current, {
+          scale: 3,
+          backgroundColor: "#F3F4F6",
+          useCORS: true,
+          onclone: (doc: Document) => {
+            try {
+              const wrapper = doc.getElementById(
+                "curah-hujan-monthly-pdf-wrapper"
+              ) as HTMLDivElement | null;
 
-              const chartContainer = wrapper.querySelector<HTMLDivElement>(
-                "[data-monthly-chart-container='true']"
-              );
+              if (wrapper) {
+                // ===== Card luar (tetap sama) =====
+                wrapper.style.backgroundColor = "#FFFFFF";
+                wrapper.style.padding = "22px";
+                wrapper.style.boxSizing = "border-box";
+                wrapper.style.borderRadius = "18px";
+                wrapper.style.border = "1px solid #E5E7EB";
+                wrapper.style.maxWidth = "1100px";
+                wrapper.style.margin = "0 auto";
+                wrapper.style.display = "block";
 
-              if (chartContainer) {
-                chartContainer.style.backgroundColor = "#FFFFFF";
-                chartContainer.style.border = "1px solid #E5E7EB";
-                chartContainer.style.borderRadius = "14px";
-                chartContainer.style.padding = "14px";
-                chartContainer.style.height = "360px";
-                chartContainer.style.boxSizing = "border-box";
-
-                const headerRow = chartContainer.querySelector<HTMLDivElement>(
-                  "div.mb-1.flex.items-center.justify-between"
+                const chartContainer = wrapper.querySelector<HTMLDivElement>(
+                  "[data-monthly-chart-container='true']"
                 );
 
-                if (headerRow) {
-                  headerRow.style.marginBottom = "12px";
-                  headerRow.style.paddingBottom = "6px";
-                  headerRow.style.borderBottom = "1px solid #E5E7EB";
+                const tableOuterCard =
+                  wrapper
+                    .querySelector<HTMLDivElement>("[data-monthly-table-container='true']")
+                    ?.closest("div.mt-3.rounded-xl") as HTMLDivElement | null;
 
-                  const leftTitle =
-                    headerRow.querySelector<HTMLSpanElement>(
-                      "span.text-\\[11px\\].font-semibold"
+                // ✅ Ambil judul tabel untuk diberi jarak saat export
+                const tableTitle = wrapper.querySelector<HTMLSpanElement>(
+                  "span.text-\\[11px\\].font-semibold.text-emerald-200"
+                );
+
+                // ===== Mode switching (hanya di clone) =====
+                if (mode === "CHART") {
+                  if (tableOuterCard) tableOuterCard.style.display = "none";
+
+                  if (chartContainer) {
+                    chartContainer.style.backgroundColor = "#FFFFFF";
+                    chartContainer.style.border = "1px solid #E5E7EB";
+                    chartContainer.style.borderRadius = "14px";
+                    chartContainer.style.padding = "14px";
+                    chartContainer.style.height = "340px";
+                    chartContainer.style.boxSizing = "border-box";
+
+                    // Hide legend di PDF
+                    const legends = chartContainer.querySelectorAll<HTMLElement>(
+                      ".recharts-legend-wrapper"
                     );
+                    legends.forEach((lg) => {
+                      lg.style.display = "none";
+                      lg.style.visibility = "hidden";
+                      lg.style.height = "0";
+                      lg.style.overflow = "hidden";
+                    });
+                  }
+                } else {
+                  if (chartContainer) chartContainer.style.display = "none";
 
-                  if (leftTitle) {
-                    leftTitle.textContent = "Rekap Curah Hujan per Bulan";
-                    leftTitle.style.color = "#111827";
-                    leftTitle.style.fontSize = "13px";
-                    leftTitle.style.fontWeight = "700";
+                  const tableContainer = wrapper.querySelector<HTMLDivElement>(
+                    "[data-monthly-table-container='true']"
+                  );
+                  if (tableContainer) {
+                    tableContainer.style.maxHeight = "none";
+                    tableContainer.style.overflow = "visible";
+                    tableContainer.style.border = "1px solid #E5E7EB";
+                    tableContainer.style.backgroundColor = "#FFFFFF";
                   }
 
-                  const rightMeta =
-                    headerRow.querySelector<HTMLSpanElement>(
-                      "span.text-\\[10px\\]"
-                    );
-                  if (rightMeta) {
-                    rightMeta.textContent = "";
-                    rightMeta.style.display = "none";
+                  if (tableOuterCard) {
+                    tableOuterCard.style.marginTop = "0px";
+                    tableOuterCard.style.paddingTop = "10px";
+                  }
+
+                  // ✅ Tambah spasi judul tabel saat export (biar tidak mepet ke tabel)
+                  if (tableTitle) {
+                    tableTitle.style.display = "inline-block";
+                    tableTitle.style.marginTop = "6px";
+                    tableTitle.style.marginBottom = "12px";
+                    tableTitle.style.paddingBottom = "2px";
+                    tableTitle.style.color = "#0F766E"; // judul jadi lebih jelas saat export (opsional)
+                    tableTitle.style.fontWeight = "800";
                   }
                 }
 
-                // Hapus legend (PDF saja)
-                const legends = chartContainer.querySelectorAll<HTMLElement>(
-                  ".recharts-legend-wrapper"
-                );
-                legends.forEach((lg) => {
-                  lg.style.display = "none";
-                  lg.style.visibility = "hidden";
-                  lg.style.height = "0";
-                  lg.style.overflow = "hidden";
+                // ===== Force style PDF (khususnya tabel + text chart) =====
+                const forceStyle = doc.createElement("style");
+                forceStyle.textContent = `
+        /* ✅ Paksa semua teks Recharts jadi hitam */
+        #curah-hujan-monthly-pdf-wrapper svg text,
+        #curah-hujan-monthly-pdf-wrapper svg tspan {
+          fill: #111827 !important;
+          color: #111827 !important;
+          opacity: 1 !important;
+        }
+
+        #curah-hujan-monthly-pdf-wrapper table {
+          border-collapse: collapse !important;
+          width: 100% !important;
+          table-layout: fixed !important;
+          font-size: 8.5px !important;
+        }
+
+        #curah-hujan-monthly-pdf-wrapper th,
+        #curah-hujan-monthly-pdf-wrapper td {
+          border: 1px solid #E5E7EB !important;
+          color: #111827 !important;
+          background: #FFFFFF !important;
+          box-sizing: border-box !important;
+          overflow: visible !important;
+          line-height: 1.35 !important;
+          vertical-align: middle !important;
+          padding: 6px 7px !important;
+          white-space: nowrap !important;
+        }
+
+        #curah-hujan-monthly-pdf-wrapper thead th {
+          background: #0F766E !important;
+          color: #FFFFFF !important;
+          font-weight: 700 !important;
+          position: static !important;
+        }
+        #curah-hujan-monthly-pdf-wrapper thead tr:nth-child(2) th {
+          background: #115E59 !important;
+          color: #ECFEFF !important;
+          font-weight: 700 !important;
+        }
+
+        #curah-hujan-monthly-pdf-wrapper tr[data-pdf-avg="1"] td {
+          background: #ECFDF5 !important;
+          color: #064E3B !important;
+          font-weight: 700 !important;
+        }
+
+        #curah-hujan-monthly-pdf-wrapper th[rowspan="2"]:nth-child(1),
+        #curah-hujan-monthly-pdf-wrapper td:nth-child(1) {
+          width: 90px !important;
+        }
+        #curah-hujan-monthly-pdf-wrapper th[rowspan="2"]:nth-child(2),
+        #curah-hujan-monthly-pdf-wrapper td:nth-child(2) {
+          width: 220px !important;
+        }
+      `;
+                doc.head.appendChild(forceStyle);
+
+                // ✅ Force via attribute juga (untuk kasus inline fill Recharts)
+                const texts = wrapper.querySelectorAll<SVGTextElement>("svg text");
+                texts.forEach((t) => {
+                  t.setAttribute("fill", "#111827");
+                  t.setAttribute("opacity", "1");
+                  t.style.fill = "#111827";
+                  t.style.opacity = "1";
+                });
+
+                const tspans = wrapper.querySelectorAll<SVGTSpanElement>("svg tspan");
+                tspans.forEach((ts) => {
+                  ts.setAttribute("fill", "#111827");
+                  ts.setAttribute("opacity", "1");
+                  ts.style.fill = "#111827";
+                  ts.style.opacity = "1";
+                });
+
+                // Tandai row AVG
+                const avgRows = wrapper.querySelectorAll<HTMLTableRowElement>("tbody tr");
+                avgRows.forEach((tr) => {
+                  const firstCell = tr.querySelector("td");
+                  const code = (firstCell?.textContent ?? "").trim().toUpperCase();
+                  if (code === "AVG") tr.setAttribute("data-pdf-avg", "1");
                 });
               }
 
-              const tableContainer = wrapper.querySelector<HTMLDivElement>(
-                "[data-monthly-table-container='true']"
+              // Hapus stylesheet tailwind/next biar html2canvas aman dari oklab/oklch
+              const styleNodes = doc.querySelectorAll(
+                "style:not([data-keep-pdf='1']), link[rel='stylesheet']"
               );
-
-              // PDF: hilangkan scroll supaya semua baris ikut tercapture
-              if (tableContainer) {
-                tableContainer.style.maxHeight = "none";
-                tableContainer.style.overflow = "visible";
-                tableContainer.style.border = "1px solid #E5E7EB";
-                tableContainer.style.backgroundColor = "#FFFFFF";
-              }
-
-              // Paksa warna teks hitam untuk label SVG recharts (PDF saja)
-              const forceStyle = doc.createElement("style");
-              forceStyle.textContent = `
-             #curah-hujan-monthly-pdf-wrapper svg text,
-  #curah-hujan-monthly-pdf-wrapper svg tspan {
-    fill: #111827 !important;
-    color: #111827 !important;
-    opacity: 1 !important;
-  }
-
-  /* TABEL PDF */
-  #curah-hujan-monthly-pdf-wrapper table {
-    border-collapse: collapse !important;
-    width: 100% !important;
-  }
-  #curah-hujan-monthly-pdf-wrapper th,
-  #curah-hujan-monthly-pdf-wrapper td {
-    color: #111827 !important;
-    border: 1px solid #E5E7EB !important;
-    background: #FFFFFF !important;
-  }
-            `;
-              doc.head.appendChild(forceStyle);
-            }
-
-            // Hapus semua stylesheet (tailwind/next) supaya html2canvas aman dari oklab/oklch
-            const styleNodes = doc.querySelectorAll(
-              "style:not([data-keep-pdf='1']), link[rel='stylesheet']"
-            );
-            styleNodes.forEach((node) => {
-              if (node.tagName.toLowerCase() === "style") {
-                const s = node as HTMLStyleElement;
-                const txt = s.textContent || "";
-                if (txt.includes("#curah-hujan-monthly-pdf-wrapper svg text")) return;
-              }
-              node.parentNode?.removeChild(node);
-            });
-
-            // Force via attribute juga (jaga-jaga)
-            const wrapper2 = doc.getElementById("curah-hujan-monthly-pdf-wrapper");
-            if (wrapper2) {
-              const texts = wrapper2.querySelectorAll<SVGTextElement>("svg text");
-              texts.forEach((t) => {
-                t.setAttribute("fill", "#111827");
-                t.setAttribute("opacity", "1");
-                t.style.fill = "#111827";
-                t.style.opacity = "1";
+              styleNodes.forEach((node) => {
+                if (node.tagName.toLowerCase() === "style") {
+                  const s = node as HTMLStyleElement;
+                  const txt = s.textContent || "";
+                  if (txt.includes("#curah-hujan-monthly-pdf-wrapper table")) return;
+                }
+                node.parentNode?.removeChild(node);
               });
-
-              const tspans = wrapper2.querySelectorAll<SVGTSpanElement>("svg tspan");
-              tspans.forEach((ts) => {
-                ts.setAttribute("fill", "#111827");
-                ts.setAttribute("opacity", "1");
-                ts.style.fill = "#111827";
-                ts.style.opacity = "1";
-              });
+            } catch (err) {
+              console.warn("html2canvas onclone cleanup failed:", err);
             }
-          } catch (err) {
-            console.warn("html2canvas onclone cleanup failed:", err);
-          }
-        },
-      });
+          },
+        });
+      }
+
+      // ===== RENDER 2 CANVAS TERPISAH =====
+      const chartCanvas = await renderMonthlyWrapper("CHART");
+      const tableCanvas = await renderMonthlyWrapper("TABLE");
+
+      // ===== PDF SETUP =====
+      const pdf = new jsPDF("landscape", "pt", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      const marginSide = 20;
+      const headerTitleY = 26;
+      const headerSubtitleY = 44;
+      const contentTopY = 65;
+      const bottomMargin = 24;
+
+      const contentWidth = pageWidth - marginSide * 2;
+      const availableHeight = pageHeight - contentTopY - bottomMargin;
 
       const base = rangeEnd || dailyDate || getTodayJakartaString();
       const year = String(base).slice(0, 4) || String(new Date().getFullYear());
 
-      const kebunLabelPdf =
-        monthlyKebun
-          ? `${monthlyKebun} — ${KEBUN_LABEL[monthlyKebun] ?? monthlyKebun}`
-          : "Total 20 Kebun";
+      const kebunLabelPdf = monthlyKebun
+        ? `${monthlyKebun} — ${KEBUN_LABEL[monthlyKebun] ?? monthlyKebun}`
+        : "Total 20 Kebun";
 
       const pageTitle = "Rekap Curah Hujan per Bulan";
       const pageSubtitle = `Tahun ${year} • ${kebunLabelPdf} • Sumber ${monthlySource}`;
       const fileName = `rekap-curah-hujan-bulanan-${year}-${monthlyKebun || "all"}-${monthlySource}.pdf`;
 
-      const maxBytes = 1024 * 1024; // 1 MB
-      const qualitySteps = [0.9, 0.7, 0.5, 0.35];
-
-      for (let i = 0; i < qualitySteps.length; i += 1) {
-        const q = qualitySteps[i];
-        const imgData = canvas.toDataURL("image/jpeg", q);
-
-        const pdf = new jsPDF("landscape", "pt", "a4");
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-
-        const marginSide = 20;
-        const chartTopY = 65;
-        const chartBottomMargin = 24;
-        const availableHeight = pageHeight - chartTopY - chartBottomMargin;
-
-        let imgWidth = pageWidth - marginSide * 2;
-        let imgHeight = (canvas.height * imgWidth) / canvas.width;
+      function addSinglePageImage(canvas: HTMLCanvasElement, subtitle: string) {
+        const scale = contentWidth / canvas.width;
+        let imgHeight = canvas.height * scale;
 
         if (imgHeight > availableHeight) {
           const ratio = availableHeight / imgHeight;
           imgHeight = availableHeight;
-          imgWidth *= ratio;
-        }
+          const newWidth = contentWidth * ratio;
 
-        const imgX = (pageWidth - imgWidth) / 2;
-        const imgY = chartTopY;
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(16);
+          pdf.text(pageTitle, pageWidth / 2, headerTitleY, { align: "center" });
+
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(11);
+          pdf.text(subtitle, pageWidth / 2, headerSubtitleY, { align: "center" });
+
+          const imgX = (pageWidth - newWidth) / 2;
+          pdf.addImage(
+            canvas.toDataURL("image/jpeg", 0.9),
+            "JPEG",
+            imgX,
+            contentTopY,
+            newWidth,
+            imgHeight,
+            "",
+            "FAST"
+          );
+          return;
+        }
 
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(16);
-        pdf.text(pageTitle, pageWidth / 2, 26, { align: "center" });
+        pdf.text(pageTitle, pageWidth / 2, headerTitleY, { align: "center" });
 
         pdf.setFont("helvetica", "normal");
         pdf.setFontSize(11);
-        pdf.text(pageSubtitle, pageWidth / 2, 44, { align: "center" });
+        pdf.text(subtitle, pageWidth / 2, headerSubtitleY, { align: "center" });
 
-        pdf.addImage(imgData, "JPEG", imgX, imgY, imgWidth, imgHeight, "", "FAST");
-
-        const blob = pdf.output("blob") as Blob;
-        const sizeOk = blob.size <= maxBytes || i === qualitySteps.length - 1;
-
-        if (sizeOk) {
-          pdf.save(fileName);
-          break;
-        }
+        pdf.addImage(
+          canvas.toDataURL("image/jpeg", 0.9),
+          "JPEG",
+          marginSide,
+          contentTopY,
+          contentWidth,
+          imgHeight,
+          "",
+          "FAST"
+        );
       }
+
+      // ===== HALAMAN 1: CHART =====
+      addSinglePageImage(chartCanvas, pageSubtitle);
+
+      // ===== HALAMAN 2+: TABEL =====
+      pdf.addPage();
+
+      const scaleTable = contentWidth / tableCanvas.width;
+      const sliceHeightPx = Math.floor(availableHeight / scaleTable);
+      const overlapPx = 32;
+      const stepPx = Math.max(1, sliceHeightPx - overlapPx);
+
+      let renderedTablePages = 0;
+      for (let y = 0; y < tableCanvas.height; y += stepPx) {
+        const remaining = tableCanvas.height - y;
+        const currentSliceHeight = Math.min(sliceHeightPx, remaining);
+
+        const sliceCanvas = document.createElement("canvas");
+        sliceCanvas.width = tableCanvas.width;
+        sliceCanvas.height = currentSliceHeight;
+
+        const ctx = sliceCanvas.getContext("2d");
+        if (!ctx) break;
+
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+
+        ctx.drawImage(
+          tableCanvas,
+          0,
+          y,
+          tableCanvas.width,
+          currentSliceHeight,
+          0,
+          0,
+          tableCanvas.width,
+          currentSliceHeight
+        );
+
+        if (renderedTablePages > 0) pdf.addPage();
+
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(16);
+        pdf.text(pageTitle, pageWidth / 2, headerTitleY, { align: "center" });
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(11);
+        pdf.text(
+          `${pageSubtitle} • Tabel (halaman ${renderedTablePages + 2})`,
+          pageWidth / 2,
+          headerSubtitleY,
+          { align: "center" }
+        );
+
+        const imgHeightPt = sliceCanvas.height * scaleTable;
+        pdf.addImage(
+          sliceCanvas.toDataURL("image/jpeg", 0.88),
+          "JPEG",
+          marginSide,
+          contentTopY,
+          contentWidth,
+          imgHeightPt,
+          "",
+          "FAST"
+        );
+
+        renderedTablePages += 1;
+        if (remaining <= sliceHeightPx) break;
+      }
+
+      pdf.save(fileName);
     } catch (err) {
       console.error("Export PDF rekap bulanan error:", err);
       await glassSwal.fire({
@@ -752,7 +890,6 @@ export default function CurahHujanSection() {
       });
     }
   }, [dailyDate, rangeEnd, monthlyKebun, monthlySource]);
-
 
   /**
    * Ambil data curah hujan untuk 1 sumber (AWS / OMBROMETER):
@@ -1080,29 +1217,82 @@ export default function CurahHujanSection() {
                 });
               });
 
+              // ====== Tambah spasi khusus PDF untuk area tabel + judulnya ======
+              const tableOuterCard = wrapper.querySelector<HTMLDivElement>(
+                "div.mt-3.rounded-xl.border.border-emerald-500\\/20.bg-slate-950\\/30.p-2"
+              );
+
+              // kasih jarak dari chart ke area tabel (PDF saja)
+              if (tableOuterCard) {
+                tableOuterCard.style.marginTop = "18px";
+                tableOuterCard.style.paddingTop = "10px";
+              }
+
+              // kasih jarak judul tabel (PDF saja)
+              const tableTitle = wrapper.querySelector<HTMLSpanElement>(
+                "span.text-\\[11px\\].font-semibold.text-emerald-200"
+              );
+              if (tableTitle) {
+                tableTitle.style.display = "inline-block";
+                tableTitle.style.marginTop = "6px";
+                tableTitle.style.marginBottom = "10px";
+                tableTitle.style.color = "#0F766E"; // judul tabel jadi warna (PDF saja)
+                tableTitle.style.fontWeight = "800";
+              }
+
               // Paksa warna teks hitam via <style> internal di clone (PDF saja)
               // Ini penting karena banyak label Recharts pakai fill/opacity bawaan.
               const forceStyle = doc.createElement("style");
               forceStyle.textContent = `
-              /* Semua teks di dalam SVG Recharts */
-              #curah-hujan-pdf-wrapper svg text,
-              #curah-hujan-pdf-wrapper svg tspan {
-                fill: #111827 !important;
-                color: #111827 !important;
-                opacity: 1 !important;
-              }
+#curah-hujan-monthly-pdf-wrapper svg text,
+/* ✅ Paksa semua teks Recharts jadi hitam (WRAPPER YANG BENAR) */
+  #curah-hujan-pdf-wrapper svg text,
+  #curah-hujan-pdf-wrapper svg tspan {
+    fill: #111827 !important;
+    color: #111827 !important;
+    opacity: 1 !important;
+  }
 
-              /* Tick / label spesifik Recharts */
-              #curah-hujan-pdf-wrapper .recharts-text,
-              #curah-hujan-pdf-wrapper .recharts-cartesian-axis-tick-value,
-              #curah-hujan-pdf-wrapper .recharts-label,
-              #curah-hujan-pdf-wrapper .recharts-cartesian-axis-tick text,
-              #curah-hujan-pdf-wrapper .recharts-cartesian-axis-tick tspan {
-                fill: #111827 !important;
-                color: #111827 !important;
-                opacity: 1 !important;
-              }
-            `;
+/* ================== TABEL PDF (ANTI-CLIP) ================== */
+#curah-hujan-monthly-pdf-wrapper table{
+  border-collapse: collapse !important;
+  width: 100% !important;
+  table-layout: fixed !important;
+}
+
+#curah-hujan-monthly-pdf-wrapper th,
+#curah-hujan-monthly-pdf-wrapper td{
+  color: #111827 !important;
+  border: 1px solid #E5E7EB !important;
+  background: #FFFFFF !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  line-height: 1.4 !important;
+  vertical-align: middle !important;
+}
+
+/* ✅ Header tabel (2 baris) butuh padding & tinggi yang cukup */
+#curah-hujan-monthly-pdf-wrapper thead{
+  display: table-header-group !important;
+}
+#curah-hujan-monthly-pdf-wrapper thead th{
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+  padding: 8px 9px !important;
+  height: auto !important;
+  position: static !important;
+  backdrop-filter: none !important;
+}
+#curah-hujan-monthly-pdf-wrapper thead tr:nth-child(2) th{
+  padding: 8px 9px !important;
+  font-weight: 600 !important;
+}
+
+/* optional: bikin font tabel sedikit lebih kecil & rapih di PDF */
+#curah-hujan-monthly-pdf-wrapper table{
+  font-size: 9px !important;
+}
+`;
               doc.head.appendChild(forceStyle);
             }
 
@@ -2435,9 +2625,9 @@ export default function CurahHujanSection() {
                 <span className="text-[11px] font-semibold text-emerald-200">
                   Tabel Rekap Bulanan per Kebun (Jan–Des)
                 </span>
-                <span className="text-[10px] text-slate-400">
+                {/* <span className="text-[10px] text-slate-400">
                   {loadingMonthlyTable ? "Memuat..." : `${monthlyTableRows.length} kebun`}
-                </span>
+                </span> */}
               </div>
 
               <div
