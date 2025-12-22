@@ -9,6 +9,7 @@ import React, {
   useState,
 } from "react";
 import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 import Swal from "sweetalert2";
 import {
   ResponsiveContainer,
@@ -890,6 +891,251 @@ export default function CurahHujanSection() {
       });
     }
   }, [dailyDate, rangeEnd, monthlyKebun, monthlySource]);
+
+  // ====================[ EXPORT EXCEL: TABEL REKAP BULANAN (JAN–DES) ]====================
+  const handleExportMonthlyExcel = useCallback(async () => {
+    try {
+      if (!hasAnyKebun) {
+        await glassSwal.fire({
+          icon: "info",
+          title: "Data belum siap",
+          html: `<div class="text-xs text-slate-200">Daftar kebun belum tersedia.</div>`,
+        });
+        return;
+      }
+
+      if (!monthlyTableRows.length) {
+        await glassSwal.fire({
+          icon: "info",
+          title: "Tabel kosong",
+          html: `<div class="text-xs text-slate-200">Tidak ada data tabel rekap bulanan untuk diexport.</div>`,
+        });
+        return;
+      }
+
+      // ✅ Dynamic import biar bundle tidak bengkak
+      const ExcelJS = (await import("exceljs")).default;
+
+      const base = rangeEnd || dailyDate || getTodayJakartaString();
+      const year = String(base).slice(0, 4) || String(new Date().getFullYear());
+
+      const kebunLabel = monthlyKebun
+        ? `${monthlyKebun} — ${KEBUN_LABEL[monthlyKebun] ?? monthlyKebun}`
+        : "Total 20 Kebun";
+
+      const headerInfo1 = `Rekap Curah Hujan per Bulan`;
+      const headerInfo2 = `Tahun ${year} • ${kebunLabel} • Sumber ${monthlySource}`;
+      const tableTitle = `Tabel Rekap Bulanan per Kebun (Jan–Des)`;
+
+      // ===== WARNA (samakan dengan PDF) =====
+      const COLOR_HEADER_1 = "0F766E"; // hijau
+      const COLOR_HEADER_2 = "115E59"; // hijau lebih gelap
+      const COLOR_HEADER_TEXT = "FFFFFF";
+      const COLOR_AVG_FILL = "ECFDF5"; // hijau muda
+      const COLOR_AVG_TEXT = "064E3B"; // hijau gelap
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = "Dashboard Pemupukan";
+      wb.created = new Date();
+
+      const ws = wb.addWorksheet("Rekap Bulanan", {
+        views: [{ state: "frozen", xSplit: 2, ySplit: 6 }], // freeze: 2 kolom + sampai header tabel
+      });
+
+      // Total kolom: 2 (kebun+nama) + 24 (CH/HH Jan–Des)
+      const totalCols = 2 + MONTH_LABELS_ID.length * 2;
+
+      // ===== Row 1-3: judul =====
+      ws.addRow([headerInfo1]);
+      ws.addRow([headerInfo2]);
+      ws.addRow([tableTitle]);
+      ws.addRow([]); // spacer
+
+      // merge judul across full columns
+      ws.mergeCells(1, 1, 1, totalCols);
+      ws.mergeCells(2, 1, 2, totalCols);
+      ws.mergeCells(3, 1, 3, totalCols);
+
+      // style judul
+      const titleStyle = (rowNum: number, fontSize: number, bold = true) => {
+        const cell = ws.getCell(rowNum, 1);
+        cell.font = { name: "Calibri", size: fontSize, bold, color: { argb: "111827" } };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      };
+      titleStyle(1, 14, true);
+      titleStyle(2, 11, false);
+      titleStyle(3, 11, true);
+
+      // ===== Header tabel (2 baris) =====
+      // Row 5: Kebun | Nama | Jan (merge 2) | Feb (merge 2) ...
+      const headerRow1: (string | number)[] = ["Kebun", "Nama Kebun"];
+      for (const m of MONTH_LABELS_ID) headerRow1.push(m, "");
+
+      // Row 6: blank | blank | CH | HH | CH | HH...
+      const headerRow2: (string | number)[] = ["", ""];
+      for (let i = 0; i < MONTH_LABELS_ID.length; i += 1) headerRow2.push("CH", "HH");
+
+      const r5 = ws.addRow(headerRow1);
+      const r6 = ws.addRow(headerRow2);
+
+      // merge Kebun & Nama (rowspan 2)
+      ws.mergeCells(5, 1, 6, 1);
+      ws.mergeCells(5, 2, 6, 2);
+
+      // merge tiap bulan (colspan 2)
+      let col = 3; // kolom C
+      for (let i = 0; i < MONTH_LABELS_ID.length; i += 1) {
+        ws.mergeCells(5, col, 5, col + 1);
+        col += 2;
+      }
+
+      // style header row 1 & 2
+      type XlsCell = import("exceljs").Cell;
+      type XlsRow = import("exceljs").Row;
+
+      const applyThinBorder = (cell: XlsCell) => {
+        cell.border = {
+          top: { style: "thin", color: { argb: "E5E7EB" } },
+          left: { style: "thin", color: { argb: "E5E7EB" } },
+          bottom: { style: "thin", color: { argb: "E5E7EB" } },
+          right: { style: "thin", color: { argb: "E5E7EB" } },
+        };
+      };
+
+      const styleHeaderRow = (
+        row: XlsRow,
+        fill: string,
+        fontColor: string,
+        fontSize: number
+      ) => {
+        row.eachCell({ includeEmpty: true }, (cell: XlsCell) => {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fill } };
+          cell.font = {
+            name: "Calibri",
+            size: fontSize,
+            bold: true,
+            color: { argb: fontColor },
+          };
+          cell.alignment = { vertical: "middle", horizontal: "center" };
+          applyThinBorder(cell);
+        });
+        row.height = 20;
+      };
+
+      styleHeaderRow(r5, COLOR_HEADER_1, COLOR_HEADER_TEXT, 11);
+      styleHeaderRow(r6, COLOR_HEADER_2, "ECFEFF", 10);
+
+      // set align untuk kolom Kebun & Nama di header
+      ws.getCell(5, 1).alignment = { vertical: "middle", horizontal: "left" };
+      ws.getCell(5, 2).alignment = { vertical: "middle", horizontal: "left" };
+
+      // ===== Data rows =====
+      const addDataRow = (
+        code: string,
+        name: string,
+        months: MonthlyRecapItem[],
+        isAvg: boolean
+      ) => {
+        const rowValues: (string | number)[] = [code, name];
+
+        months.forEach((mo) => {
+          const ch = Number(mo.totalMm ?? 0) || 0;
+          const hhRaw = Number(mo.rainyDays ?? 0) || 0;
+          const hh = isAvg ? Math.round(hhRaw) : hhRaw;
+
+          rowValues.push(Math.round(ch), hh);
+        });
+
+        const row = ws.addRow(rowValues);
+
+        // zebra tipis (opsional), PDF tidak zebra tapi UI iya. Kita keep minimal.
+        row.eachCell({ includeEmpty: true }, (cell: XlsCell, colNumber: number) => {
+          applyThinBorder(cell);
+
+          // align: text kiri, angka kanan
+          if (colNumber <= 2) {
+            cell.alignment = { vertical: "middle", horizontal: "left" };
+            cell.font = { name: "Calibri", size: 11, color: { argb: "111827" } };
+          } else {
+            cell.alignment = { vertical: "middle", horizontal: "right" };
+            cell.font = { name: "Calibri", size: 11, color: { argb: "111827" } };
+          }
+        });
+
+        // ✅ highlight AVG seperti PDF
+        if (isAvg) {
+          row.eachCell({ includeEmpty: true }, (cell: XlsCell) => {
+            cell.fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: COLOR_AVG_FILL },
+            };
+            cell.font = {
+              name: "Calibri",
+              size: 11,
+              bold: true,
+              color: { argb: COLOR_AVG_TEXT },
+            };
+          });
+        }
+
+        return row;
+      };
+
+      monthlyTableRows.forEach((r) => addDataRow(r.kebunCode, r.kebunName, r.months, false));
+      if (monthlyTableAvgRow) {
+        addDataRow(
+          monthlyTableAvgRow.kebunCode,
+          monthlyTableAvgRow.kebunName,
+          monthlyTableAvgRow.months,
+          true
+        );
+      }
+
+      // ===== Column widths (mirip PDF) =====
+      ws.getColumn(1).width = 10; // Kebun
+      ws.getColumn(2).width = 30; // Nama
+      for (let i = 3; i <= totalCols; i += 1) ws.getColumn(i).width = 8;
+
+      // ===== Format angka (opsional tapi rapi) =====
+      // CH & HH integer
+      for (let r = 7; r <= ws.rowCount; r += 1) {
+        for (let c = 3; c <= totalCols; c += 1) {
+          const cell = ws.getCell(r, c);
+          if (typeof cell.value === "number") cell.numFmt = "0";
+        }
+      }
+
+      const fileName = `rekap-curah-hujan-bulanan-${year}-${monthlyKebun || "all"}-${monthlySource}.xlsx`;
+
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      saveAs(blob, fileName);
+    } catch (err) {
+      console.error("Export Excel styled rekap bulanan error:", err);
+      await glassSwal.fire({
+        icon: "error",
+        title: "Gagal export Excel",
+        html: `
+          <div class="text-xs text-slate-200">
+            Terjadi kesalahan saat membuat file Excel.<br/>
+            (Detail: ${err instanceof Error ? err.message : "unknown error"})
+          </div>
+        `,
+      });
+    }
+  }, [
+    hasAnyKebun,
+    monthlyTableRows,
+    monthlyTableAvgRow,
+    rangeEnd,
+    dailyDate,
+    monthlyKebun,
+    monthlySource,
+  ]);
 
   /**
    * Ambil data curah hujan untuk 1 sumber (AWS / OMBROMETER):
@@ -2528,6 +2774,17 @@ export default function CurahHujanSection() {
             >
               Export PDF
             </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 px-3 text-[11px]"
+                onClick={handleExportMonthlyExcel}
+                disabled={loadingMonthlyTable || !hasAnyKebun || !monthlyTableRows.length}
+              >
+                Export Excel
+              </Button>
 
           </div>
 
